@@ -52,7 +52,13 @@ Take screenshots as usual (⌘⇧3, ⌘⇧4, ⌘⇧5). A camera icon in the menu
 - **Black out sensitive text** – off by default. Finds e-mail addresses, IBANs, card numbers, API keys / tokens (GitHub, OpenAI, Stripe, AWS, Slack, JWT …) and values after `password:` / `token:` / `secret:` with on-device OCR, and paints black boxes over them in the image. The unredacted **original is kept in `~/Library/Application Support/ShotNamer/Originals` for 7 days** (it still contains the secrets) and *Undo last rename* puts it back. Found secrets are also kept out of the file name and the Spotlight text. **Best effort, not a guarantee:** OCR can misread or miss text, a value split over two lines is not caught, and harmless text can be covered by mistake. Check screenshots before sharing them. Applies to images only; videos are not redacted.
 - **Make the text searchable** – on by default. The text in the screenshot (on-device OCR) is stored in the file's Finder comment, which Spotlight indexes: type a word from a screenshot into Spotlight and it appears. Only works for screenshots in folders Spotlight indexes (not `/tmp`, not hidden folders).
 - **Sort screenshots** – off by default. Files into `2026-11/`, `github.com/` (website, else app) or `2026-11/github.com/`, inside the screenshot folder or a folder you choose. Undo moves the file back and removes folders it created if they are empty again. A destination outside Desktop/Documents may trigger a new macOS folder-access prompt.
-- **Website** – read the address bar in browser screenshots.
+- **Website** – a site name for browser screenshots, from the most to the least reliable source:
+  1. the address bar visible in the screenshot (`github.com`), read with OCR;
+  2. the browser's real page address at the moment of capture, for screenshots without an address bar. Opt-in, uses AppleScript, so macOS asks once per browser for *Automation* permission. Safari, Chrome, Brave, Edge, Arc, Vivaldi, Opera and Chromium; Firefox cannot be asked;
+  3. the end of the window title (`Meine Anzeigen | willhaben` → `willhaben`), accepted only if that name also appears as a header or logo line in the image (or is a well-known site such as GitHub). Needs the Accessibility permission for titles;
+  4. *experimental, off by default:* a header line that is exactly a well-known site name (`GitHub`, `YouTube`, …).
+
+  If none of these gives solid evidence, no site is added: a missing site is better than a wrong one.
 - **Window / tab title** – needs Accessibility permission.
 - **Biggest-text fallback** – off by default.
 
@@ -72,7 +78,7 @@ Websites, window titles and OCR text become part of the **filename**; titles can
 - Recognised: PNG, JPG, HEIC and TIFF named like `Screenshot …`, `Screen Shot …` or the localized equivalents (German, French, Spanish, Dutch, Italian). **Screen recordings** (`Screen Recording …mov` / `Bildschirmaufnahme …mov`, also `.mp4`) are renamed too: ShotNamer waits until the movie is finished and playable, then names it from the app and window title at the start of the recording, and reads the website from a frame one second in. Recordings get no searchable text and are **not redacted**. A custom screenshot name prefix (`defaults write com.apple.screencapture name`) is not recognised yet.
 - macOS does not store which app a screenshot came from. ShotNamer records which app was active over time and looks up the app active at the capture time (parsed from the filename). It is right in nearly all cases, but can be wrong if you switch apps within the same second.
 - The window title is sampled once a second, so it matches the moment of capture even if you switch tab right after. Some apps expose no title; then the name is `date - app`.
-- The website is only detected when the address bar (or the domain) is visible in the screenshot and the app is a browser (Safari, Chrome, Brave, Firefox, Arc, Edge, Opera, Vivaldi, Orion, DuckDuckGo, Zen). A cropped screenshot without the address bar gets no site. Other apps are not scanned.
+- The website is only detected when the address bar (or the domain) is visible in the screenshot and the app is a browser (Safari, Chrome, Brave, Firefox, Arc, Edge, Opera, Vivaldi, Orion, DuckDuckGo, Zen). Without a visible address bar, the fallbacks above apply. Other apps are not scanned.
 - The biggest-text fallback picks the *largest* confident text line, which can be an ad or banner on busy pages, so it is off by default.
 - Names are capped (app 30 chars, text 50) and cleaned of `/ : \`. Duplicates get ` 2`, ` 3`.
 
@@ -88,7 +94,6 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it is put together and 
 
 ## Roadmap
 
-- Recognise sites from logos / page text when the address bar is not visible
 - Custom name template
 - App icon, Developer ID signing and notarization, downloadable releases
 

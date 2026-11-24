@@ -410,3 +410,55 @@ import UniformTypeIdentifiers
         #expect(!pixelIsBlack(shot, x: 100, y: 100)) // untouched
     }
 }
+
+@Suite struct SiteFallbackTests {
+    func L(_ t: String, _ y: Double) -> TextLine { TextLine(text: t, y: y, height: 0.03) }
+
+    @Test func titleSegmentNeedsEvidenceInTheImage() {
+        let header = [L("WILLHABEN", 0.92), L("Meine Anzeigen", 0.6)]
+        #expect(SiteDetector.fromTitle("Meine Anzeigen | willhaben", lines: header) == "willhaben")
+        #expect(SiteDetector.fromTitle("Meine Anzeigen | willhaben", lines: [L("Meine Anzeigen", 0.6)]) == nil)   // no evidence
+        #expect(SiteDetector.fromTitle("Meine Anzeigen | willhaben", lines: [L("willhaben", 0.3)]) == nil)         // not a header
+        #expect(SiteDetector.fromTitle("Home - Docs", lines: [L("Welcome", 0.5)]) == nil)                           // never invent a site
+        #expect(SiteDetector.fromTitle("Dashboard", lines: [L("Dashboard", 0.95)]) == nil)                          // single segment
+        #expect(SiteDetector.fromTitle("E-Mail Einstellungen", lines: [L("E-Mail Einstellungen", 0.9)]) == nil)     // hyphen is not a separator
+    }
+
+    @Test func wellKnownBrandsInTitles() {
+        #expect(SiteDetector.fromTitle("GitHub", lines: []) == "github.com")
+        #expect(SiteDetector.fromTitle("Pull requests · DanielHodeib/ShotNamer · GitHub", lines: []) == "github.com")
+        #expect(SiteDetector.fromTitle("How do I … - Stack Overflow", lines: []) == "stackoverflow.com")
+    }
+
+    @Test func brandHeaderOnlyForExactTopLines() {
+        #expect(SiteDetector.brandHeader(in: [L("YouTube", 0.95)]) == "youtube.com")
+        #expect(SiteDetector.brandHeader(in: [L("YouTube", 0.5)]) == nil)                         // body text, not a header
+        #expect(SiteDetector.brandHeader(in: [L("I love GitHub actions", 0.95)]) == nil)           // sentence, not the logo
+    }
+
+    @Test func urlsBecomeDomains() {
+        #expect(SiteDetector.domain(ofURL: "https://docs.github.com/en/x?y=1") == "github.com")
+        #expect(SiteDetector.domain(ofURL: "https://www.willhaben.at/iad/myprofile") == "willhaben.at")
+        #expect(SiteDetector.domain(ofURL: "chrome://newtab") == nil)
+        #expect(SiteDetector.domain(ofURL: "file:///Users/x/a.html") == nil)
+        #expect(SiteDetector.domain(ofURL: "http://localhost:3000/") == nil)
+    }
+
+    @Test func orderIsAddressBarThenBrowserThenTitleThenHeader() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let log = UndoLog(url: dir.appendingPathComponent("log.json"))
+        func name(lines: [TextLine], title: String?, known: String?, text: Bool) throws -> String {
+            let u = dir.appendingPathComponent("Screenshot \(UUID().uuidString).png"); try Data([1]).write(to: u)
+            return try Renamer.rename(u, date: Date(timeIntervalSince1970: 0), app: "Brave Browser", title: title, useSite: true, useOCR: false,
+                                      knownSite: known, textSites: text, log: log, recognize: { _ in lines }).lastPathComponent
+        }
+        let first = try name(lines: [L("github.com", 0.95)], title: nil, known: "other.com", text: true)
+        #expect(first.hasSuffix("github.com.png") && !first.contains("other.com")) // what the screenshot shows wins
+        #expect(try name(lines: [], title: nil, known: "other.com", text: true).hasSuffix("other.com.png"))
+        #expect(try name(lines: [L("WILLHABEN", 0.9)], title: "Meine Anzeigen | willhaben", known: nil, text: true).hasSuffix("willhaben - Meine Anzeigen | willhaben.png"))
+        #expect(try name(lines: [L("YouTube", 0.95)], title: nil, known: nil, text: true).hasSuffix("youtube.com.png"))
+        #expect(try name(lines: [L("YouTube", 0.95)], title: nil, known: nil, text: false).hasSuffix("Brave Browser.png"))  // experimental: opt-in
+    }
+}

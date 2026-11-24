@@ -48,4 +48,52 @@ public enum SiteDetector {
         let t = title.lowercased().trimmingCharacters(in: .whitespaces)
         return t == site || t == site.split(separator: ".").first.map(String.init)
     }
+
+    // MARK: - Fallbacks for screenshots without a visible address bar
+
+    /// Big sites whose name is distinctive. Used only for an exact title ("GitHub") or an exact header line.
+    static let brands: [String: String] = [
+        "github": "github.com", "gitlab": "gitlab.com", "youtube": "youtube.com", "google": "google.com",
+        "wikipedia": "wikipedia.org", "reddit": "reddit.com", "stackoverflow": "stackoverflow.com",
+        "linkedin": "linkedin.com", "twitter": "twitter.com", "facebook": "facebook.com", "instagram": "instagram.com",
+        "netflix": "netflix.com", "spotify": "spotify.com", "amazon": "amazon.com", "ebay": "ebay.com",
+        "notion": "notion.so", "figma": "figma.com", "slack": "slack.com", "discord": "discord.com",
+        "chatgpt": "chatgpt.com", "claude": "claude.ai", "perplexity": "perplexity.ai", "medium": "medium.com",
+        "twitch": "twitch.tv", "pinterest": "pinterest.com", "dropbox": "dropbox.com", "trello": "trello.com",
+        "hackernews": "ycombinator.com",
+    ]
+
+    private static func key(_ s: String) -> String { s.lowercased().filter { $0.isLetter || $0.isNumber } }
+
+    /// Site name from a window title ("Meine Anzeigen | willhaben" → "willhaben"), but only with evidence:
+    /// the last segment must also appear as a header/logo line in the top quarter of the image, or the whole
+    /// title must be a well-known site ("GitHub"). Otherwise a title like "Home - Docs" would invent a site.
+    public static func fromTitle(_ title: String, lines: [TextLine]) -> String? {
+        if let d = brands[key(title)] { return d }
+        // Separators need spaces around them, so "E-Mail" is not split.
+        let parts = title.replacingOccurrences(of: #"\s[|–—·-]\s"#, with: "\u{1}", options: .regularExpression)
+            .components(separatedBy: "\u{1}").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard parts.count >= 2, let name = parts.last, (3...25).contains(name.count),
+              name.split(separator: " ").count <= 2 else { return nil }
+        if let d = brands[key(name)] { return d }
+        let k = key(name)
+        let confirmed = lines.contains { $0.y > 0.75 && key($0.text) == k }
+        return confirmed ? name.lowercased() : nil
+    }
+
+    /// A header line that is exactly a well-known site's name ("GitHub", "YouTube") near the top of the image.
+    /// Experimental: a page that merely has such a line can be misread, so it is opt-in.
+    public static func brandHeader(in lines: [TextLine]) -> String? {
+        for line in lines.sorted(by: { $0.y > $1.y }) where line.y > 0.85 {
+            if let d = brands[key(line.text)] { return d }
+        }
+        return nil
+    }
+
+    /// Domain of a URL ("https://docs.github.com/x" → "github.com"); nil for non-web URLs.
+    public static func domain(ofURL string: String) -> String? {
+        guard let url = URL(string: string), ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              let host = url.host, host.contains(".") else { return nil }
+        return registrable(host)
+    }
 }

@@ -3,6 +3,7 @@
 ## 0.1.0 – unreleased
 
 - Settings window with a custom file name template (`{date} {time} {app} {site} {title}`).
+- Site detection without a visible address bar: browser address via AppleScript (opt-in), title evidence confirmed by the image, experimental header guess.
 - Optional redaction: black out e-mails, IBANs, card numbers, keys/tokens and passwords; original backed up 7 days; undo restores it.
 - Screen recordings (.mov/.mp4) are renamed like screenshots.
 - Searchable text: OCR text stored in the Finder comment so Spotlight finds screenshots by their content.

@@ -8,6 +8,8 @@ struct SettingsView: View {
     @AppStorage("useTitle") private var useTitle = true
     @AppStorage("useOCR") private var useOCR = false
     @AppStorage("searchable") private var searchable = true
+    @AppStorage("useBrowserURL") private var useBrowserURL = false
+    @AppStorage("textSites") private var textSites = false
     @AppStorage("redact") private var redact = false
     @AppStorage("sortMode") private var sortMode = SortMode.off.rawValue
     @AppStorage("sortRoot") private var sortRoot = ""
@@ -32,6 +34,10 @@ struct SettingsView: View {
             }
             Section("What goes into the name") {
                 Toggle("Website (read from the address bar in browser screenshots)", isOn: $useSite)
+                Toggle("Ask the browser for the page address (Safari, Chrome, Brave, Edge, Arc, Vivaldi, Opera)", isOn: $useBrowserURL)
+                Text("For screenshots that don't show the address bar. Asks macOS for Automation permission the first time. Firefox can't be asked.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle("Guess the site from a header line like “GitHub” (experimental)", isOn: $textSites)
                 Toggle("Window / tab title (needs Accessibility permission)", isOn: Binding(get: { useTitle }, set: {
                     useTitle = $0
                     if $0 && !WindowTitle.isTrusted { WindowTitle.requestPermission() }

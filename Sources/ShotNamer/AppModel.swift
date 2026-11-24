@@ -13,6 +13,9 @@ final class AppModel: ObservableObject {
     private var history = AppHistory()
     private var titles = AppHistory(capacity: 600) // window title over time; "" = none
     private var lastTitle: String?
+    private var urls = AppHistory(capacity: 600) // browser domain over time; "" = none
+    private var lastURL: String?
+    private var urlDenied = false
     private var redactionNote: String?
     private let backupDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("ShotNamer/Originals", isDirectory: true)
@@ -21,7 +24,7 @@ final class AppModel: ObservableObject {
     private let ignoredBundles: Set<String> = ["com.apple.screencaptureui", Bundle.main.bundleIdentifier ?? ""]
 
     init() {
-        UserDefaults.standard.register(defaults: ["useOCR": false, "useTitle": true, "useSite": true, "searchable": true, "redact": false])
+        UserDefaults.standard.register(defaults: ["useOCR": false, "useTitle": true, "useSite": true, "searchable": true, "redact": false, "useBrowserURL": false, "textSites": false])
         // SHOTNAMER_FOLDER lets tests and debugging point the app at a scratch folder.
         if let p = ProcessInfo.processInfo.environment["SHOTNAMER_FOLDER"] {
             folder = URL(fileURLWithPath: p, isDirectory: true)
@@ -61,7 +64,25 @@ final class AppModel: ObservableObject {
         history.record(name: name, at: Date())
     }
 
+    private func sampleURL() {
+        guard UserDefaults.standard.bool(forKey: "useBrowserURL"), !urlDenied,
+              let app = NSWorkspace.shared.frontmostApplication, let bid = app.bundleIdentifier,
+              BrowserURL.supported[bid] != nil else { return }
+        var domain = ""
+        switch BrowserURL.current(bundleID: bid) {
+        case .url(let u): domain = SiteDetector.domain(ofURL: u) ?? ""
+        case .none: break
+        case .denied:
+            urlDenied = true
+            status = "Allow ShotNamer to control \(app.localizedName ?? "the browser") in Privacy & Security › Automation to read page addresses."
+        }
+        guard domain != lastURL else { return }
+        lastURL = domain
+        urls.record(name: domain, at: Date())
+    }
+
     private func sampleTitle() {
+        sampleURL()
         guard UserDefaults.standard.bool(forKey: "useTitle"),
               let app = NSWorkspace.shared.frontmostApplication, let name = app.localizedName,
               !ignoredBundles.contains(app.bundleIdentifier ?? "") else { return }
@@ -87,13 +108,16 @@ final class AppModel: ObservableObject {
         let searchable = UserDefaults.standard.bool(forKey: "searchable")
         let redact = UserDefaults.standard.bool(forKey: "redact")
         let backups = self.backupDir
+        let knownSite = UserDefaults.standard.bool(forKey: "useBrowserURL") ? urls.app(at: date).flatMap { $0.isEmpty ? nil : $0 } : nil
+        let textSites = UserDefaults.standard.bool(forKey: "textSites")
         let log = self.log
         do {
             // OCR is slow; keep it off the main thread.
             let new = try await Task.detached {
                 try Renamer.rename(url, date: date, app: app, title: title, useSite: useSite, useOCR: useOCR, template: template,
                                       sort: sort, sortRoot: sortRoot, searchable: searchable, redact: redact, backupDir: backups,
-                                      onRedacted: { kinds in Task { @MainActor in self.redactionNote = "Blacked out: \(kinds.joined(separator: ", "))" } }, log: log)
+                                      onRedacted: { kinds in Task { @MainActor in self.redactionNote = "Blacked out: \(kinds.joined(separator: ", "))" } },
+                                      knownSite: knownSite, textSites: textSites, log: log)
             }.value
             written.insert(new.path)
             if let note = redactionNote { status = note; redactionNote = nil } else { status = nil }

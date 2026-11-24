@@ -20,6 +20,7 @@ Sources/
     ShotNamerApp.swift  menu UI + settings window scene
     SettingsView.swift  settings form
     AppModel.swift      wires watcher, app-activation tracking, rename, undo
+    BrowserURL.swift    front-tab address via AppleScript (frontmost supported browsers only)
     WindowTitle.swift   focused-window title via Accessibility API
     FolderWatcher.swift DispatchSource on the folder; reports new screenshot files
 Tests/ShotNamerCoreTests/
@@ -46,6 +47,7 @@ Opt-in. In `Renamer.rename`, after the single OCR pass: (1) lines are scrubbed o
 
 - **No rename loops.** Three layers: the default template starts with a date; `Template.isValidName` rejects custom templates whose output looks like a screenshot (so the default is used); and `AppModel` remembers every path it wrote and ignores it if the watcher reports it again.
 - **Accessibility for titles, not Screen Recording.** Reading a window title via AX needs only the Accessibility permission and avoids the recording-indicator prompt. OCR was the first attempt for the text part but picked ads and placeholders, so it is only a fallback.
+- **Site detection is layered by reliability** (`Renamer.rename`): address bar via OCR → browser URL history (sampled each second like titles, looked up at capture time) → `SiteDetector.fromTitle` (needs the name as a header line in the image, or a known brand) → optional `brandHeader`. Wrong sites are worse than none, so every layer demands evidence and the last is opt-in. BrowserURL only queries the frontmost supported browser, because `tell application` would launch one that is not running.
 - **Site from OCR, not Accessibility.** The address bar is in the screenshot, so OCR needs no permission and also works for sites the user can see but the browser does not expose. A restricted TLD list and browser-only scanning avoid false positives (e-mail addresses, numbers like `13.797.610`).
 - **On-device OCR only.** Apple Vision; no network code anywhere.
 - **Swift 5 language mode** inside a `swift-tools-version:6.0` package, to avoid strict-concurrency churn for a small app. Revisit when moving to Swift 6 mode.

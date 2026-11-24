@@ -21,7 +21,8 @@ public enum Renamer {
     public static func rename(_ url: URL, date: Date, app: String?, title: String? = nil,
                               useSite: Bool = false, useOCR: Bool, template: String = Template.defaultName,
                               sort: SortMode = .off, sortRoot: URL? = nil, searchable: Bool = false, redact: Bool = false, backupDir: URL? = nil,
-                              onRedacted: (([String]) -> Void)? = nil, log: UndoLog,
+                              onRedacted: (([String]) -> Void)? = nil,
+                              knownSite: String? = nil, textSites: Bool = false, log: UndoLog,
                               recognize: (URL) -> [TextLine] = TextRecognizer.lines) throws -> URL {
         var title = title.flatMap { $0.isEmpty ? nil : $0 }
         let wantSite = useSite && SiteDetector.isBrowser(app)
@@ -49,7 +50,13 @@ public enum Renamer {
             }
         }
 
-        let site = wantSite ? SiteDetector.domain(in: lines) : nil
+        // Most to least reliable: what the screenshot shows → what the browser said → title evidence → header guess.
+        var site: String?
+        if wantSite {
+            site = SiteDetector.domain(in: lines) ?? knownSite
+            if site == nil, let t = title { site = SiteDetector.fromTitle(t, lines: lines) }
+            if site == nil, textSites { site = SiteDetector.brandHeader(in: lines) }
+        }
         var text = title
         if let t = title, let s = site, SiteDetector.isRedundant(title: t, site: s) { text = nil }
         if title == nil && useOCR { text = TextRecognizer.headline(from: lines) }
