@@ -1,5 +1,5 @@
 #!/bin/bash
-# Publishes a signed GitHub release that installed copies pick up automatically.
+# Publishes a GitHub release: ShotNamer.dmg (download), ShotNamer.zip + .sig (signed, used by the self-updater).
 # Usage: scripts/release.sh 0.2.0
 # Needs: the private key at $SHOTNAMER_UPDATE_KEY (default ~/.config/shotnamer/update_ed25519), `gh` logged in,
 # a clean main branch. The key must match Update.publicKey; without it no installed copy accepts an update.
@@ -25,8 +25,15 @@ rm -rf "$OUT" && mkdir -p "$OUT"
 ditto -c -k --keepParent build/ShotNamer.app "$OUT/ShotNamer.zip"   # ditto keeps symlinks and the signature
 swift scripts/update-key.swift sign "$KEY" "$OUT/ShotNamer.zip" > "$OUT/ShotNamer.zip.sig"
 
+# Disk image for people downloading by hand (drag the app onto Applications). The updater uses the signed zip.
+STAGE="$(mktemp -d)"
+ditto build/ShotNamer.app "$STAGE/ShotNamer.app"
+ln -s /Applications "$STAGE/Applications"
+hdiutil create -quiet -volname ShotNamer -srcfolder "$STAGE" -format UDZO -ov "$OUT/ShotNamer.dmg"
+rm -rf "$STAGE"
+
 git commit -qm "Release $VERSION" Resources/Info.plist
 git tag "v$VERSION"
 git push -q origin HEAD "v$VERSION"
-gh release create "v$VERSION" "$OUT/ShotNamer.zip" "$OUT/ShotNamer.zip.sig" --title "ShotNamer $VERSION" --generate-notes
+gh release create "v$VERSION" "$OUT/ShotNamer.dmg" "$OUT/ShotNamer.zip" "$OUT/ShotNamer.zip.sig" --title "ShotNamer $VERSION" --generate-notes
 echo "Released $VERSION"

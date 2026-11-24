@@ -24,8 +24,8 @@ Requires macOS 14 (Sonoma) or newer.
 
 **Download (easiest):**
 
-1. Get `ShotNamer.zip` from the [latest release](https://github.com/DanielHodeib/ShotNamer/releases/latest) and unzip it.
-2. Drag `ShotNamer.app` into `/Applications`.
+1. Get `ShotNamer.dmg` from the [latest release](https://github.com/DanielHodeib/ShotNamer/releases/latest) and open it. (`ShotNamer.zip` and `.sig` in the same release are for the built-in updater; ignore them.)
+2. Drag `ShotNamer` onto the `Applications` shortcut in the window.
 3. First start: **right-click the app › Open › Open**. (If macOS still refuses: *System Settings › Privacy & Security › Open Anyway*.) The app is not notarized yet, so macOS asks once. After that it starts normally.
 
 From then on ShotNamer **updates itself** (see *Updates* below); you never have to download again.
@@ -105,7 +105,7 @@ It waits until no rename is running, swaps the app bundle in place and restarts.
 
 ```sh
 swift scripts/update-key.swift keygen ~/.config/shotnamer/update_ed25519   # once; prints the public key for Update.publicKey
-scripts/release.sh 0.2.0     # bumps Info.plist, tests, builds universal, zips with ditto, signs, tags, gh release create
+scripts/release.sh 0.2.0     # bumps Info.plist, tests, builds universal, makes .dmg + signed .zip, tags, gh release create
 ```
 
 **Back up the private key** (`~/.config/shotnamer/update_ed25519`, e.g. in a password manager). If it is lost, installed copies can never accept another update; if it leaks, anyone with it and write access to the releases could ship code to every user.

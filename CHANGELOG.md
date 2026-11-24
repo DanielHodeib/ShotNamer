@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.1.0 – unreleased
+## 0.1.1
+
+- Download is a `.dmg` (drag to Applications). The signed `.zip` stays in the release for the self-updater.
+
+## 0.1.0
 
 - Automatic updates from Ed25519-signed GitHub releases; `scripts/release.sh` publishes one.
 - Window-title and browser-address sampling run on a background queue (a hung app can no longer stall the menu bar); video frames use the async AVFoundation API (no deprecation warnings).
