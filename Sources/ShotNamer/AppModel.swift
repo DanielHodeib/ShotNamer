@@ -17,7 +17,7 @@ final class AppModel: ObservableObject {
     private let ignoredBundles: Set<String> = ["com.apple.screencaptureui", Bundle.main.bundleIdentifier ?? ""]
 
     init() {
-        UserDefaults.standard.register(defaults: ["useOCR": false, "useTitle": true, "useSite": true])
+        UserDefaults.standard.register(defaults: ["useOCR": false, "useTitle": true, "useSite": true, "searchable": true])
         // SHOTNAMER_FOLDER lets tests and debugging point the app at a scratch folder.
         if let p = ProcessInfo.processInfo.environment["SHOTNAMER_FOLDER"] {
             folder = URL(fileURLWithPath: p, isDirectory: true)
@@ -79,12 +79,13 @@ final class AppModel: ObservableObject {
         let sort = SortMode(rawValue: UserDefaults.standard.string(forKey: "sortMode") ?? "") ?? .off
         let sortPath = UserDefaults.standard.string(forKey: "sortRoot") ?? ""
         let sortRoot = sortPath.isEmpty ? nil : URL(fileURLWithPath: sortPath, isDirectory: true)
+        let searchable = UserDefaults.standard.bool(forKey: "searchable")
         let log = self.log
         do {
             // OCR is slow; keep it off the main thread.
             let new = try await Task.detached {
                 try Renamer.rename(url, date: date, app: app, title: title, useSite: useSite, useOCR: useOCR, template: template,
-                                      sort: sort, sortRoot: sortRoot, log: log)
+                                      sort: sort, sortRoot: sortRoot, searchable: searchable, log: log)
             }.value
             written.insert(new.path)
             recent = Array(([new] + recent).prefix(5))

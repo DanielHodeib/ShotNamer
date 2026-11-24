@@ -7,6 +7,7 @@ struct SettingsView: View {
     @AppStorage("useSite") private var useSite = true
     @AppStorage("useTitle") private var useTitle = true
     @AppStorage("useOCR") private var useOCR = false
+    @AppStorage("searchable") private var searchable = true
     @AppStorage("sortMode") private var sortMode = SortMode.off.rawValue
     @AppStorage("sortRoot") private var sortRoot = ""
 
@@ -38,6 +39,11 @@ struct SettingsView: View {
                     Button("Grant Accessibility…") { WindowTitle.requestPermission() }
                 }
                 Toggle("Fallback: biggest text in the image when there is no title", isOn: $useOCR)
+            }
+            Section("Search") {
+                Toggle("Make the text in screenshots searchable in Spotlight", isOn: $searchable)
+                Text("Stored on-device in the file's Finder comment. Find a screenshot by typing a word from it into Spotlight.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Folders") {
                 Picker("Sort screenshots", selection: $sortMode) {

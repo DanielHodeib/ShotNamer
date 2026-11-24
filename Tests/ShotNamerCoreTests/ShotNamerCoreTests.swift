@@ -266,3 +266,29 @@ let utc = TimeZone(identifier: "UTC")!
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("Safari/user-file.txt").path))
     }
 }
+
+@Suite struct SearchIndexTests {
+    @Test func commentRoundTripsAndDedupes() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let log = UndoLog(url: dir.appendingPathComponent("log.json"))
+        let u = dir.appendingPathComponent("Screenshot.png"); try Data([1]).write(to: u)
+        let lines = [TextLine(text: "Marktplatz", y: 0.5, height: 0.1), TextLine(text: "Marktplatz", y: 0.4, height: 0.1),
+                     TextLine(text: "Meine Anzeigen", y: 0.3, height: 0.1)]
+        let new = try Renamer.rename(u, date: Date(timeIntervalSince1970: 0), app: "Notes", useOCR: false,
+                                     searchable: true, log: log, recognize: { _ in lines })
+        #expect(SearchIndex.read(from: new) == "Marktplatz Meine Anzeigen")
+    }
+
+    @Test func offMeansNoOCRAndNoComment() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let log = UndoLog(url: dir.appendingPathComponent("log.json"))
+        let u = dir.appendingPathComponent("Screenshot.png"); try Data([1]).write(to: u)
+        let new = try Renamer.rename(u, date: Date(timeIntervalSince1970: 0), app: "Notes", useOCR: false, log: log,
+                                     recognize: { _ in Issue.record("no OCR needed"); return [] })
+        #expect(SearchIndex.read(from: new) == nil)
+    }
+}

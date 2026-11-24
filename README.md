@@ -49,6 +49,7 @@ Take screenshots as usual (⌘⇧3, ⌘⇧4, ⌘⇧5). A camera icon in the menu
 ### Settings
 
 - **File name template.** Default `{date} {time} - {app} - {site} - {title}`. Tokens: `{date}` `{time}` `{app}` `{site}` `{title}`. A part that is missing (no site, say) disappears together with the separator before it. Example: `{app} · {date} {time}` → `Safari · 2026-11-24 14.32.10.png`. The template must contain `{date}` or `{time}` and must not produce names that look like a fresh macOS screenshot (`Screenshot …`); otherwise the default is used.
+- **Make the text searchable** – on by default. The text in the screenshot (on-device OCR) is stored in the file's Finder comment, which Spotlight indexes: type a word from a screenshot into Spotlight and it appears. Only works for screenshots in folders Spotlight indexes (not `/tmp`, not hidden folders).
 - **Sort screenshots** – off by default. Files into `2026-11/`, `github.com/` (website, else app) or `2026-11/github.com/`, inside the screenshot folder or a folder you choose. Undo moves the file back and removes folders it created if they are empty again. A destination outside Desktop/Documents may trigger a new macOS folder-access prompt.
 - **Website** – read the address bar in browser screenshots.
 - **Window / tab title** – needs Accessibility permission.
@@ -62,7 +63,7 @@ Take screenshots as usual (⌘⇧3, ⌘⇧4, ⌘⇧5). A camera icon in the menu
 
 ### Privacy note
 
-Websites, window titles and OCR text become part of the **filename**; titles can contain page names, document names or message subjects. If your screenshot folder syncs (for example iCloud "Desktop & Documents"), that text syncs too, and it can show up in Finder, Spotlight and backups. Turn the title and OCR options off if your screenshots may contain sensitive material.
+Websites, window titles and OCR text become part of the **filename**; titles can contain page names, document names or message subjects. The searchable text is stored in the file's Finder comment (extended attribute), so it travels with the file, can sync with it and shows in *Get Info*. Turn "searchable" off if screenshots may contain sensitive text. If your screenshot folder syncs (for example iCloud "Desktop & Documents"), that text syncs too, and it can show up in Finder, Spotlight and backups. Turn the title and OCR options off if your screenshots may contain sensitive material.
 
 ## Behaviour and limits
 

@@ -9,6 +9,7 @@ Sources/
     AppHistory.swift    "which app was frontmost at time T"
     TextRecognizer.swift  Vision OCR → text lines with position; biggest-text fallback
     SiteDetector.swift  domain from the address-bar text; browser check; redundancy check
+    SearchIndex.swift   OCR text → Finder-comment xattr (kMDItemFinderComment) for Spotlight
     SortMode.swift      month / source folder paths for sorting
     Template.swift      {token} engine: missing tokens drop their separator; validity check (no rename loops)
     UndoLog.swift       JSON list of renames in ~/Library/Application Support/ShotNamer/
