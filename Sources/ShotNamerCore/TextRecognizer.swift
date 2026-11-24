@@ -43,14 +43,24 @@ public enum TextRecognizer {
         }
     }
 
-    /// A frame one second in (or the middle of a shorter clip).
+    /// A frame one second in (or the middle of a shorter clip). Blocks; call it off the main thread.
     static func frame(of url: URL) -> CGImage? {
         let asset = AVURLAsset(url: url)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
-        let seconds = asset.duration.seconds
-        let t = CMTime(seconds: seconds.isFinite && seconds > 0 ? min(1, seconds / 2) : 0, preferredTimescale: 600)
-        return try? generator.copyCGImage(at: t, actualTime: nil)
+        return blocking {
+            let seconds = (try? await asset.load(.duration).seconds) ?? 0
+            let t = CMTime(seconds: seconds.isFinite && seconds > 0 ? min(1, seconds / 2) : 0, preferredTimescale: 600)
+            return try? await generator.image(at: t).image
+        }
+    }
+
+    /// Runs an async job to completion from synchronous code.
+    private static func blocking<T>(_ job: @escaping () async -> T?) -> T? {
+        let box = ResultBox(), done = DispatchSemaphore(value: 0)
+        Task.detached { box.value = await job(); done.signal() }
+        done.wait()
+        return box.value as? T
     }
 
     /// The most prominent line: the largest text. Can be an ad on busy pages, so it is only a fallback.
@@ -58,3 +68,5 @@ public enum TextRecognizer {
         lines.filter { $0.text.count >= 4 }.max { $0.height < $1.height }?.text
     }
 }
+
+private final class ResultBox: @unchecked Sendable { var value: Any? }

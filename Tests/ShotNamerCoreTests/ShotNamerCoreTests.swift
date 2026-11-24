@@ -466,6 +466,8 @@ import UniformTypeIdentifiers
 }
 
 import CryptoKit
+import AVFoundation
+import CoreVideo
 
 @Suite struct UpdateTests {
     @Test func comparesVersions() {
@@ -599,5 +601,64 @@ import CryptoKit
         try log.append(.init(from: "/x", to: dir.appendingPathComponent("gone.png").path, date: Date(timeIntervalSince1970: 2)))
         #expect(throws: (any Error).self) { try Renamer.undoLast(log: log) }
         #expect(log.all() == [keep])
+    }
+
+    @Test func undoThatFailsRestoringTheBackupKeepsTheRecordAndTheFile() throws {
+        let dir = try scratch(); defer { try? FileManager.default.removeItem(at: dir) }
+        let log = UndoLog(url: dir.appendingPathComponent("log.json"))
+        let shot = dir.appendingPathComponent("Screenshot.png"); try RedactionTests().makePNG(at: shot)
+        let backups = dir.appendingPathComponent("Originals")
+        let line = TextLine(text: "max@example.com", y: 0.5, height: 0.2, rect: CGRect(x: 0.1, y: 0.4, width: 0.5, height: 0.2))
+        let new = try Renamer.rename(shot, date: Date(), app: "Mail", useOCR: false, redact: true, backupDir: backups,
+                                     log: log, recognize: { _ in [line] })
+        // Break the backup: an immutable file can't be moved into place, so the restore throws.
+        var backup = try #require(FileManager.default.contentsOfDirectory(at: backups, includingPropertiesForKeys: nil).first)
+        var lock = URLResourceValues(); lock.isUserImmutable = true
+        try backup.setResourceValues(lock)
+        defer { var unlock = URLResourceValues(); unlock.isUserImmutable = false; try? backup.setResourceValues(unlock) }
+
+        #expect(throws: (any Error).self) { try Renamer.undoLast(log: log) }
+        #expect(FileManager.default.fileExists(atPath: new.path))            // still under the new name, not stranded
+        #expect(!FileManager.default.fileExists(atPath: shot.path))
+        #expect(log.all().count == 1)                                          // record kept: undo can be retried
+    }
+}
+
+@Suite struct VideoTests {
+    /// Writes a 2 s solid-colour .mov so the frame grabber and the rename can run on a real movie.
+    static func makeMovie(at url: URL) async throws {
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 320, AVVideoHeightKey: 200])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA, kCVPixelBufferWidthKey as String: 320,
+            kCVPixelBufferHeightKey as String: 200])
+        writer.add(input); writer.startWriting(); writer.startSession(atSourceTime: .zero)
+        for i in 0..<4 {
+            var buffer: CVPixelBuffer?
+            CVPixelBufferCreate(nil, 320, 200, kCVPixelFormatType_32BGRA, nil, &buffer)
+            while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(10)) }
+            adaptor.append(buffer!, withPresentationTime: CMTime(value: CMTimeValue(i), timescale: 2))
+        }
+        input.markAsFinished()
+        await writer.finishWriting()
+        if writer.status != .completed { throw writer.error ?? CocoaError(.fileWriteUnknown) }
+    }
+
+    @Test func readsAFrameAndRenamesARecording() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let mov = dir.appendingPathComponent("Screen Recording 2026-11-24 at 9.55.00 AM.mov")
+        try await Self.makeMovie(at: mov)
+
+        let frame = try #require(TextRecognizer.frame(of: mov))
+        #expect(frame.width == 320 && frame.height == 200)
+
+        let log = UndoLog(url: dir.appendingPathComponent("log.json"))
+        let new = try Renamer.rename(mov, date: Date(timeIntervalSince1970: 0), app: "Safari", useSite: true, useOCR: false,
+                                     searchable: true, log: log)       // real OCR path on a video frame
+        #expect(new.pathExtension == "mov" && !FileNamer.isCapture(filename: new.lastPathComponent))
+        #expect(!FileManager.default.fileExists(atPath: mov.path))
     }
 }

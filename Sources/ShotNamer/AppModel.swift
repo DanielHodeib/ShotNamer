@@ -18,6 +18,8 @@ final class AppModel: ObservableObject {
     private var lastURL: String?
     private var urlDenied: Set<String> = [] // browsers that refused Automation; the others still work
     private var ticks = 0
+    private var sampling = false
+    private let sampler = DispatchQueue(label: "shotnamer.sampler") // serial: NSAppleScript must not run concurrently
     private let backupDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("ShotNamer/Originals", isDirectory: true)
     private var written: Set<String> = [] // files this app produced; never process them again
@@ -85,32 +87,41 @@ final class AppModel: ObservableObject {
         history.record(name: name, at: Date())
     }
 
-    private func sampleURL() {
-        guard UserDefaults.standard.bool(forKey: "useBrowserURL"),
-              let app = NSWorkspace.shared.frontmostApplication, let bid = app.bundleIdentifier,
-              !ignoredBundles.contains(bid) else { return }
+    /// Once a second: what the front app's window title and (opt-in) browser address are. The slow calls
+    /// (Accessibility, AppleScript) run on a background queue so a hung app can't freeze the menu bar; a sample
+    /// is skipped while the previous one is still running.
+    private func sampleTitle() {
+        let defaults = UserDefaults.standard
+        let wantURL = defaults.bool(forKey: "useBrowserURL"), wantTitle = defaults.bool(forKey: "useTitle")
+        guard !sampling, wantURL || wantTitle,
+              let app = NSWorkspace.shared.frontmostApplication, let name = app.localizedName,
+              let bid = app.bundleIdentifier, !ignoredBundles.contains(bid) else { return }
+        let pid = app.processIdentifier, at = Date()
+        let askBrowser = wantURL && BrowserURL.supported[bid] != nil && !urlDenied.contains(bid)
+        sampling = true
+        sampler.async {
+            let url: BrowserURL.Result = askBrowser ? BrowserURL.current(bundleID: bid) : .none
+            let title = wantTitle ? (WindowTitle.focused(pid: pid, appName: name) ?? "") : nil
+            Task { @MainActor in
+                self.sampling = false
+                if wantURL { self.record(url: url, bundle: bid, appName: name, at: at) }
+                if let title, title != self.lastTitle { self.lastTitle = title; self.titles.record(name: title, at: at) }
+            }
+        }
+    }
+
+    private func record(url: BrowserURL.Result, bundle: String, appName: String, at: Date) {
         var domain = "" // any other app in front (e.g. Firefox): the last browser's page is no longer what is shown
-        switch BrowserURL.supported[bid] == nil || urlDenied.contains(bid) ? .none : BrowserURL.current(bundleID: bid) {
+        switch url {
         case .url(let u): domain = SiteDetector.domain(ofURL: u) ?? ""
         case .none: break
         case .denied:
-            urlDenied.insert(bid)
-            status = "Allow ShotNamer to control \(app.localizedName ?? "the browser") in Privacy & Security › Automation to read page addresses."
+            urlDenied.insert(bundle)
+            status = "Allow ShotNamer to control \(appName) in Privacy & Security › Automation to read page addresses."
         }
         guard domain != lastURL else { return }
         lastURL = domain
-        urls.record(name: domain, at: Date())
-    }
-
-    private func sampleTitle() {
-        sampleURL()
-        guard UserDefaults.standard.bool(forKey: "useTitle"),
-              let app = NSWorkspace.shared.frontmostApplication, let name = app.localizedName,
-              !ignoredBundles.contains(app.bundleIdentifier ?? "") else { return }
-        let title = WindowTitle.focused(pid: app.processIdentifier, appName: name) ?? ""
-        guard title != lastTitle else { return }
-        lastTitle = title
-        titles.record(name: title, at: Date())
+        urls.record(name: domain, at: at)
     }
 
     private func handle(_ url: URL) async {
