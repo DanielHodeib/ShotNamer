@@ -74,7 +74,9 @@ final class Updater {
             throw Failure("release \(release.version) has no signed download")
         }
 
+        guard (release.size(Update.zipName) ?? 0) <= Update.maxZipBytes else { throw Failure("release \(release.version) is too large") }
         let (zip, _) = try await URLSession.shared.data(from: zipURL)
+        guard zip.count <= Update.maxZipBytes else { throw Failure("release \(release.version) is too large") }
         let (sig, _) = try await URLSession.shared.data(from: sigURL)
         guard Update.verify(zip, signatureBase64: String(decoding: sig, as: UTF8.self), publicKeyBase64: Update.publicKey) else {
             throw Failure("the download of \(release.version) is not signed by the ShotNamer key; not installed")

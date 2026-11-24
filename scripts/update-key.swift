@@ -13,8 +13,9 @@ case "keygen":
     guard !FileManager.default.fileExists(atPath: keyURL.path) else { fail("\(keyURL.path) exists; refusing to overwrite") }
     let key = Curve25519.Signing.PrivateKey()
     try FileManager.default.createDirectory(at: keyURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-    FileManager.default.createFile(atPath: keyURL.path, contents: Data(key.rawRepresentation.base64EncodedString().utf8),
-                                   attributes: [.posixPermissions: 0o600])
+    // Never print a public key whose private half was not saved: no update could ever be signed for it.
+    guard FileManager.default.createFile(atPath: keyURL.path, contents: Data(key.rawRepresentation.base64EncodedString().utf8),
+                                         attributes: [.posixPermissions: 0o600]) else { fail("could not write \(keyURL.path)") }
     print(key.publicKey.rawRepresentation.base64EncodedString())
 case "sign":
     guard a.count == 4 else { fail("usage: sign <keyfile> <file>") }

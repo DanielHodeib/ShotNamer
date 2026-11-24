@@ -5,6 +5,8 @@ import Foundation
 public enum Update {
     public static let zipName = "ShotNamer.zip"
     public static let signatureName = "ShotNamer.zip.sig"
+    /// The zip is checked in memory; a bigger asset is refused before download (the app is a few MB).
+    public static let maxZipBytes = 100_000_000
     /// Releases must be signed with the matching private key (kept off the repo, see scripts/release.sh).
     /// A constant, not an Info.plist entry, so an edited plist can't switch verification off.
     public static let publicKey = "plgczhtz0mQgLsjxe2yWfR6+h9MRDK2h90t+vXHI6Bs="
@@ -13,6 +15,7 @@ public enum Update {
         public struct Asset: Decodable {
             public let name: String
             public let browser_download_url: URL
+            public let size: Int?
         }
         public let tag_name: String
         public let draft: Bool
@@ -21,6 +24,7 @@ public enum Update {
 
         public var version: String { tag_name.hasPrefix("v") ? String(tag_name.dropFirst()) : tag_name }
         public func asset(_ name: String) -> URL? { assets.first { $0.name == name }?.browser_download_url }
+        public func size(_ name: String) -> Int? { assets.first { $0.name == name }?.size }
     }
 
     /// "v1.2.10" → [1, 2, 10]; nil if it is not a plain dotted version.

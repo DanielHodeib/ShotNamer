@@ -10,7 +10,8 @@ VERSION="${1:?usage: scripts/release.sh <version, e.g. 0.2.0>}"
 [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+)*$ ]] || { echo "version must look like 0.2.0" >&2; exit 1; }
 KEY="${SHOTNAMER_UPDATE_KEY:-$HOME/.config/shotnamer/update_ed25519}"
 [ -f "$KEY" ] || { echo "missing signing key $KEY" >&2; exit 1; }
-[ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "commit your changes first" >&2; exit 1; }
+# Untracked files count too: SwiftPM compiles every .swift file in Sources/, tracked or not.
+[ -z "$(git status --porcelain)" ] || { echo "commit or remove your changes first (git status)" >&2; exit 1; }
 git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null && { echo "tag v$VERSION exists" >&2; exit 1; }
 
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Resources/Info.plist
