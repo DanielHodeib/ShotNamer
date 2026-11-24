@@ -103,6 +103,7 @@ final class Updater {
         guard !isBusy() else { return manual ? "Update postponed: a rename is still running." : nil }
 
         _ = try FileManager.default.replaceItemAt(bundle, withItemAt: newApp)
+        try? FileManager.default.removeItem(at: staging) // terminate() below exits before the defer would run
         relaunch(bundle)
         return nil
     }
