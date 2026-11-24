@@ -72,8 +72,8 @@ let utc = TimeZone(identifier: "UTC")!
         }
         let a = try shot("Screenshot A.png"), b = try shot("Screenshot B.png")
 
-        let a2 = try Renamer.rename(a, date: date, app: "Safari", useOCR: true, log: log, ocr: { _ in "Title" })
-        let b2 = try Renamer.rename(b, date: date, app: "Safari", useOCR: true, log: log, ocr: { _ in "Title" })
+        let a2 = try Renamer.rename(a, date: date, app: "Safari", useOCR: true, log: log, recognize: { _ in [TextLine(text: "Title", y: 0.5, height: 0.1)] })
+        let b2 = try Renamer.rename(b, date: date, app: "Safari", useOCR: true, log: log, recognize: { _ in [TextLine(text: "Title", y: 0.5, height: 0.1)] })
         #expect(a2.lastPathComponent.hasSuffix("Safari - Title.png"))
         #expect(b2.lastPathComponent.hasSuffix("Safari - Title 2.png"))
 
@@ -93,7 +93,7 @@ let utc = TimeZone(identifier: "UTC")!
         let u = dir.appendingPathComponent("Screenshot.png"); try Data([1]).write(to: u)
         let new = try Renamer.rename(u, date: Date(timeIntervalSince1970: 0), app: "Brave Browser",
                                      title: "Meine Anzeigen | willhaben", useOCR: true, log: log,
-                                     ocr: { _ in Issue.record("OCR must not run when a title exists"); return nil })
+                                     recognize: { _ in Issue.record("OCR must not run when a title exists"); return [] })
         #expect(new.lastPathComponent.hasSuffix("Brave Browser - Meine Anzeigen | willhaben.png"))
     }
 
@@ -103,7 +103,57 @@ let utc = TimeZone(identifier: "UTC")!
         let log = UndoLog(url: dir.appendingPathComponent("log.json"))
         let u = dir.appendingPathComponent("Screenshot.png"); try Data([1]).write(to: u)
         let new = try Renamer.rename(u, date: Date(timeIntervalSince1970: 0), app: "Notes", useOCR: false, log: log,
-                                     ocr: { _ in Issue.record("OCR must not run"); return nil })
+                                     recognize: { _ in Issue.record("OCR must not run"); return [] })
         #expect(new.lastPathComponent.hasSuffix("Notes.png"))
+    }
+}
+
+@Suite struct SiteDetectorTests {
+    func lines(_ items: (String, Double)...) -> [TextLine] { items.map { TextLine(text: $0.0, y: $0.1, height: 0.02) } }
+
+    @Test func findsDomainInAddressBar() {
+        #expect(SiteDetector.domain(in: lines(("Bookmarks", 0.95), ("willhaben.at/iad/myprofile/myadverts", 0.99))) == "willhaben.at")
+        #expect(SiteDetector.domain(in: lines(("github.com", 0.91))) == "github.com")
+        #expect(SiteDetector.domain(in: lines(("https://www.docs.github.com/en", 0.95))) == "github.com")
+        #expect(SiteDetector.registrable("www.bbc.co.uk") == "bbc.co.uk")
+    }
+
+    @Test func ignoresNonDomains() {
+        #expect(SiteDetector.domain(in: lines(("MARKTPLATZ 13.797.610", 0.8), ("Aktiv bis 08.01.", 0.4), ("Node.js and file.png", 0.5))) == nil)
+        #expect(SiteDetector.domain(in: lines(("mail me at dan@gmail.com", 0.5))) == nil)
+    }
+
+    @Test func addressBarBeatsPageContent() {
+        #expect(SiteDetector.domain(in: lines(("see example.org", 0.5), ("see example.org", 0.4), ("github.com", 0.95))) == "github.com")
+        #expect(SiteDetector.domain(in: lines(("see example.org", 0.5), ("a.com", 0.3), ("example.org", 0.2))) == "example.org")
+    }
+
+    @Test func onlyBrowsersAreScanned() {
+        #expect(SiteDetector.isBrowser("Brave Browser"))
+        #expect(SiteDetector.isBrowser("Safari"))
+        #expect(!SiteDetector.isBrowser("Mail"))
+        #expect(!SiteDetector.isBrowser(nil))
+    }
+
+    @Test func redundantTitleIsDropped() {
+        #expect(SiteDetector.isRedundant(title: "GitHub", site: "github.com"))
+        #expect(!SiteDetector.isRedundant(title: "Meine Anzeigen | willhaben", site: "willhaben.at"))
+    }
+
+    @Test func siteEndsUpInTheName() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let log = UndoLog(url: dir.appendingPathComponent("log.json"))
+        let u = dir.appendingPathComponent("Screenshot.png"); try Data([1]).write(to: u)
+        let fake: (URL) -> [TextLine] = { _ in [TextLine(text: "github.com", y: 0.91, height: 0.02)] }
+        let new = try Renamer.rename(u, date: Date(timeIntervalSince1970: 0), app: "Brave Browser", title: "GitHub",
+                                     useSite: true, useOCR: false, log: log, recognize: fake)
+        #expect(new.lastPathComponent.hasSuffix("Brave Browser - github.com.png"))
+        // non-browser: no scanning
+        let v = dir.appendingPathComponent("Screenshot2.png"); try Data([1]).write(to: v)
+        let other = try Renamer.rename(v, date: Date(timeIntervalSince1970: 0), app: "Mail", useSite: true, useOCR: false,
+                                       log: log, recognize: { _ in Issue.record("must not OCR in Mail"); return [] })
+        #expect(other.lastPathComponent.hasSuffix("Mail.png"))
     }
 }

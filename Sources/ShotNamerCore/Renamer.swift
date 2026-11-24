@@ -18,11 +18,19 @@ public enum Renamer {
 
     /// Renames `url` in place and logs it for undo. Returns the new URL.
     @discardableResult
-    public static func rename(_ url: URL, date: Date, app: String?, title: String? = nil, useOCR: Bool, log: UndoLog,
-                              ocr: (URL) -> String? = TextRecognizer.headline) throws -> URL {
-        // Window title is far more meaningful than OCR; OCR only fills in when there is no title.
-        let text = title.flatMap { $0.isEmpty ? nil : $0 } ?? (useOCR ? ocr(url) : nil)
-        let name = FileNamer.makeName(date: date, app: app, text: text, ext: url.pathExtension.lowercased())
+    public static func rename(_ url: URL, date: Date, app: String?, title: String? = nil,
+                              useSite: Bool = false, useOCR: Bool, log: UndoLog,
+                              recognize: (URL) -> [TextLine] = TextRecognizer.lines) throws -> URL {
+        let title = title.flatMap { $0.isEmpty ? nil : $0 }
+        let wantSite = useSite && SiteDetector.isBrowser(app)
+        // One OCR pass serves both the site and the headline fallback.
+        let lines = (wantSite || (useOCR && title == nil)) ? recognize(url) : []
+        let site = wantSite ? SiteDetector.domain(in: lines) : nil
+
+        var text = title
+        if let t = title, let s = site, SiteDetector.isRedundant(title: t, site: s) { text = nil }
+        if title == nil && useOCR { text = TextRecognizer.headline(from: lines) }
+        let name = FileNamer.makeName(date: date, app: app, site: site, text: text, ext: url.pathExtension.lowercased())
         let dest = FileNamer.uniqueURL(in: url.deletingLastPathComponent(), name: name)
         try FileManager.default.moveItem(at: url, to: dest)
         try log.append(.init(from: url.path, to: dest.path, date: Date()))

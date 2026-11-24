@@ -6,6 +6,7 @@ struct ShotNamerApp: App {
     @AppStorage("paused") private var paused = false
     @AppStorage("useOCR") private var useOCR = false
     @AppStorage("useTitle") private var useTitle = true
+    @AppStorage("useSite") private var useSite = true
 
     var body: some Scene {
         MenuBarExtra("ShotNamer", systemImage: paused ? "camera.metering.unknown" : "camera.viewfinder") {
@@ -13,11 +14,15 @@ struct ShotNamerApp: App {
             if let status = model.status { Text(status) }
             Divider()
             Toggle("Pause", isOn: $paused)
+            Toggle("Detect website (reads the address bar)", isOn: $useSite)
             Toggle("Add window / tab title", isOn: Binding(get: { useTitle }, set: {
                 useTitle = $0
                 if $0 && !WindowTitle.isTrusted { WindowTitle.requestPermission() }
             }))
-            Toggle("Fallback: read text in image (OCR)", isOn: $useOCR)
+            if useTitle && !WindowTitle.isTrusted {
+                Button("Grant Accessibility for titles…") { WindowTitle.requestPermission() }
+            }
+            Toggle("Fallback: add biggest text in image", isOn: $useOCR)
             Toggle("Launch at login", isOn: Binding(get: { model.launchAtLogin }, set: { model.launchAtLogin = $0 }))
             Divider()
             if !model.recent.isEmpty {

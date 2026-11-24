@@ -45,8 +45,8 @@ public enum FileNamer {
         return out.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
     }
 
-    /// "2026-11-24 14.32.10 - Safari - Heading text.png"
-    public static func makeName(date: Date, app: String?, text: String?, ext: String,
+    /// "2026-11-24 14.32.10 - Safari - github.com - Page title.png"
+    public static func makeName(date: Date, app: String?, site: String? = nil, text: String?, ext: String,
                                 timeZone: TimeZone = .current) -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -54,6 +54,7 @@ public enum FileNamer {
         f.dateFormat = "yyyy-MM-dd HH.mm.ss"
         var parts = [f.string(from: date)]
         if let app = app.map({ sanitize($0, maxLength: 30) }), !app.isEmpty { parts.append(app) }
+        if let site = site.map({ sanitize($0, maxLength: 40) }), !site.isEmpty { parts.append(site) }
         if let text = text.map({ sanitize($0) }), !text.isEmpty { parts.append(text) }
         return parts.joined(separator: " - ") + "." + ext
     }

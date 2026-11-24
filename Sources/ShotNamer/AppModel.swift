@@ -16,7 +16,7 @@ final class AppModel: ObservableObject {
     private let ignoredBundles: Set<String> = ["com.apple.screencaptureui", Bundle.main.bundleIdentifier ?? ""]
 
     init() {
-        UserDefaults.standard.register(defaults: ["useOCR": false, "useTitle": true])
+        UserDefaults.standard.register(defaults: ["useOCR": false, "useTitle": true, "useSite": true])
         // SHOTNAMER_FOLDER lets tests and debugging point the app at a scratch folder.
         if let p = ProcessInfo.processInfo.environment["SHOTNAMER_FOLDER"] {
             folder = URL(fileURLWithPath: p, isDirectory: true)
@@ -71,11 +71,12 @@ final class AppModel: ObservableObject {
         let app = history.app(at: date)
         let title = UserDefaults.standard.bool(forKey: "useTitle") ? titles.app(at: date) : nil
         let useOCR = UserDefaults.standard.bool(forKey: "useOCR")
+        let useSite = UserDefaults.standard.bool(forKey: "useSite")
         let log = self.log
         do {
             // OCR is slow; keep it off the main thread.
             let new = try await Task.detached {
-                try Renamer.rename(url, date: date, app: app, title: title, useOCR: useOCR, log: log)
+                try Renamer.rename(url, date: date, app: app, title: title, useSite: useSite, useOCR: useOCR, log: log)
             }.value
             recent = Array(([new] + recent).prefix(5))
             status = nil
