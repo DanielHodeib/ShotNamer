@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage("useTitle") private var useTitle = true
     @AppStorage("useOCR") private var useOCR = false
     @AppStorage("searchable") private var searchable = true
+    @AppStorage("redact") private var redact = false
     @AppStorage("sortMode") private var sortMode = SortMode.off.rawValue
     @AppStorage("sortRoot") private var sortRoot = ""
 
@@ -39,6 +40,11 @@ struct SettingsView: View {
                     Button("Grant Accessibility…") { WindowTitle.requestPermission() }
                 }
                 Toggle("Fallback: biggest text in the image when there is no title", isOn: $useOCR)
+            }
+            Section("Privacy") {
+                Toggle("Black out e-mails, IBANs, card numbers, keys and passwords", isOn: $redact)
+                Text("Best effort: found with on-device OCR, so it can miss things. The image file is changed; the original is kept for 7 days and \"Undo last rename\" restores it. Videos are not redacted.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Search") {
                 Toggle("Make the text in screenshots searchable in Spotlight", isOn: $searchable)

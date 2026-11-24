@@ -296,3 +296,117 @@ let utc = TimeZone(identifier: "UTC")!
         #expect(SearchIndex.read(from: new) == nil)
     }
 }
+
+@Suite struct SensitiveDetectorTests {
+    func kinds(_ s: String) -> [String] { SensitiveDetector.matches(in: s).map(\.kind) }
+
+    @Test func findsEachKind() {
+        #expect(kinds("write to max.muster@example.com now") == ["e-mail"])
+        #expect(kinds("IBAN AT61 1904 3002 3457 3201") == ["IBAN"])
+        #expect(kinds("DE89370400440532013000") == ["IBAN"])
+        #expect(kinds("Card 4111 1111 1111 1111") == ["card number"])
+        #expect(kinds("4111111111111111") == ["card number"])           // plain digits pass Luhn
+        #expect(kinds("token ghp_" + String(repeating: "a1B2", count: 10)) == ["key / token"])
+        #expect(kinds("AKIAIOSFODNN7EXAMPLE") == ["key / token"])
+        #expect(kinds("Authorization: Bearer abcdef0123456789abcdef") == ["key / token"])
+        #expect(kinds("password: hunter2") == ["password / secret"])
+        #expect(kinds("Passwort = geheim123") == ["password / secret"])
+    }
+
+    @Test func leavesNormalTextAlone() {
+        for s in ["MARKTPLATZ 13.797.610", "Aktiv bis 08.01.", "willhaben.at/iad/myprofile", "Meine Anzeigen | willhaben",
+                  "1234567890123456", // 16 digits failing Luhn
+                  "Node.js and file.png", "26-27-pos5-5a-061-angular-routing-erweiterung-danielhodeib", "Tue 24. Nov 08:39:07",
+                  "Passwort vergessen?"] {
+            #expect(!SensitiveDetector.contains(s), "false positive: \(s)")
+        }
+    }
+
+    @Test func scrubRemovesTheSecretButKeepsTheRest() {
+        let out = SensitiveDetector.scrub("Login max@example.com password: hunter2 done")
+        #expect(!out.contains("max@") && !out.contains("hunter2"))
+        #expect(out.contains("Login") && out.contains("done"))
+    }
+}
+
+import ImageIO
+import UniformTypeIdentifiers
+
+@Suite struct RedactionTests {
+    func makePNG(at url: URL, dpi: Double = 144) throws {
+        let ctx = CGContext(data: nil, width: 400, height: 200, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(gray: 1, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: 400, height: 200))
+        let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, ctx.makeImage()!, [kCGImagePropertyDPIWidth: dpi, kCGImagePropertyDPIHeight: dpi] as CFDictionary)
+        #expect(CGImageDestinationFinalize(dest))
+    }
+
+    func pixelIsBlack(_ url: URL, x: Int, y: Int) -> Bool { // x,y from the top-left
+        let img = CGImageSourceCreateImageAtIndex(CGImageSourceCreateWithURL(url as CFURL, nil)!, 0, nil)!
+        let ctx = CGContext(data: nil, width: img.width, height: img.height, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+        let p = ctx.data!.assumingMemoryBound(to: UInt8.self)
+        let row = ctx.bytesPerRow * y
+        return p[row + x * 4] < 20 && p[row + x * 4 + 1] < 20 && p[row + x * 4 + 2] < 20
+    }
+
+    func dpi(_ url: URL) -> Double? {
+        let props = CGImageSourceCopyPropertiesAtIndex(CGImageSourceCreateWithURL(url as CFURL, nil)!, 0, nil) as? [CFString: Any]
+        return props?[kCGImagePropertyDPIWidth] as? Double
+    }
+
+    @Test func blacksOutKeepsBackupKeepsDPIAndUndoRestores() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let log = UndoLog(url: dir.appendingPathComponent("log.json"))
+        let shot = dir.appendingPathComponent("Screenshot.png"); try makePNG(at: shot)
+        let backups = dir.appendingPathComponent("Originals")
+
+        // OCR says: line "Contact max@example.com", the e-mail occupies x 0.5…0.8, y 0.4…0.6 (bottom-left origin)
+        let line = TextLine(text: "Contact max@example.com", y: 0.5, height: 0.2, rect: CGRect(x: 0.1, y: 0.4, width: 0.7, height: 0.2),
+                            boxFor: { _ in CGRect(x: 0.5, y: 0.4, width: 0.3, height: 0.2) })
+        var reported: [String] = []
+        let new = try Renamer.rename(shot, date: Date(timeIntervalSince1970: 0), app: "Mail", useOCR: false, searchable: true,
+                                     redact: true, backupDir: backups, onRedacted: { reported = $0 }, log: log, recognize: { _ in [line] })
+
+        #expect(reported == ["e-mail"])
+        #expect(pixelIsBlack(new, x: 260, y: 100))           // inside the box (x 0.65*400, y centre)
+        #expect(!pixelIsBlack(new, x: 20, y: 100))           // outside stays white
+        #expect(dpi(new) == 144)                             // Retina metadata survived
+        #expect(!new.lastPathComponent.contains("max@"))
+        #expect(!(SearchIndex.read(from: new) ?? "").contains("max@"))  // the comment never holds the secret
+        #expect((SearchIndex.read(from: new) ?? "").contains("Contact"))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: backups.path).count == 1)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).allSatisfy { !$0.hasPrefix(".shotnamer-") }) // temp file gone
+
+        let restored = try #require(try Renamer.undoLast(log: log))
+        #expect(!pixelIsBlack(restored, x: 260, y: 100))     // the original is back, unredacted
+    }
+
+    @Test func titleWithASecretIsDroppedFromTheName() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let log = UndoLog(url: dir.appendingPathComponent("log.json"))
+        let u = dir.appendingPathComponent("Screenshot.png"); try Data([1]).write(to: u)
+        let new = try Renamer.rename(u, date: Date(timeIntervalSince1970: 0), app: "Safari", title: "Inbox - max@example.com",
+                                     useOCR: false, redact: true, log: log, recognize: { _ in [] })
+        #expect(!new.lastPathComponent.contains("max@"))
+    }
+
+    @Test func neverRedactsWithoutABackupLocation() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let log = UndoLog(url: dir.appendingPathComponent("log.json"))
+        let shot = dir.appendingPathComponent("Screenshot.png"); try makePNG(at: shot)
+        let line = TextLine(text: "max@example.com", y: 0.5, height: 0.2, rect: CGRect(x: 0.1, y: 0.4, width: 0.5, height: 0.2))
+        #expect(throws: (any Error).self) {
+            try Renamer.rename(shot, date: Date(), app: "Mail", useOCR: false, redact: true, backupDir: nil, log: log, recognize: { _ in [line] })
+        }
+        #expect(!pixelIsBlack(shot, x: 100, y: 100)) // untouched
+    }
+}

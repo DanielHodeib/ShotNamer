@@ -9,6 +9,8 @@ Sources/
     AppHistory.swift    "which app was frontmost at time T"
     TextRecognizer.swift  Vision OCR → text lines with position; biggest-text fallback
     SiteDetector.swift  domain from the address-bar text; browser check; redundancy check
+    SensitiveDetector.swift  regex finders (e-mail, IBAN, card, tokens, labelled secrets); scrub()
+    Redactor.swift      black boxes via CoreGraphics, format/DPI/profile preserved, atomic swap; backup purge
     SearchIndex.swift   OCR text → Finder-comment xattr (kMDItemFinderComment) for Spotlight
     SortMode.swift      month / source folder paths for sorting
     Template.swift      {token} engine: missing tokens drop their separator; validity check (no rename loops)
@@ -35,6 +37,10 @@ scripts/install.sh      build-app + copy to /Applications + restart
 4. **Identify.** Capture time comes from the digits in the filename (works in any locale, 12 h or 24 h). The file's own creation date is only a fallback, because the floating screenshot thumbnail can delay writing the file by seconds. `AppHistory.app(at:)` returns the app active at that time. A 1 s timer records the focused window title into a second `AppHistory`, so the title at capture time is looked up the same way. `com.apple.screencaptureui` and ShotNamer itself are never recorded.
 5. **Rename.** One OCR pass (off the main thread). If the app is a browser, `SiteDetector.domain` picks the domain: a match in the top 20% of the image (the address bar) wins, else the most frequent domain; subdomains collapse (`docs.github.com` → `github.com`). Then the window title (dropped if it only repeats the site), else the optional biggest-text fallback → `FileNamer.makeName` → `uniqueURL` → move → append to `UndoLog`.
 6. **Undo.** `Renamer.undoLast` pops the newest log entry and moves the file back, refusing to overwrite an existing file.
+
+## Redaction
+
+Opt-in. In `Renamer.rename`, after the single OCR pass: (1) lines are scrubbed of sensitive matches, and a window title containing one is dropped, so neither the file name nor the Spotlight comment can leak it; (2) for images, `Redactor.regions` maps each match to a box (`VNRecognizedText.boundingBox(for:)` on the exact OCR string, falling back to the whole line); (3) the original is copied to `Originals/<uuid>-<name>` and recorded in the undo log; (4) `Redactor.blackOut` redraws the image at pixel size with the source's properties and swaps it in with `replaceItemAt` from a dot-prefixed temp file (the watcher ignores dot files). It refuses to run without a backup location. `undoLast` restores the backup over the renamed-back file. Backups older than 7 days are purged at launch.
 
 ## Decisions
 

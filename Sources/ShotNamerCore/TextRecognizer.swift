@@ -2,12 +2,17 @@ import Foundation
 import AVFoundation
 import Vision
 
-/// One recognised line of text. `y` is the vertical centre (0 = bottom, 1 = top), `height` the relative text height.
-public struct TextLine: Equatable {
+/// One recognised line of text. `y` is the vertical centre (0 = bottom, 1 = top), `height` the relative text height,
+/// `rect` the line's normalised box. `boxFor` gives the box of a substring of `text` (for redaction).
+public struct TextLine {
     public let text: String
     public let y: Double
     public let height: Double
-    public init(text: String, y: Double, height: Double) { self.text = text; self.y = y; self.height = height }
+    public let rect: CGRect
+    let boxFor: ((Range<String.Index>) -> CGRect?)?
+    public init(text: String, y: Double, height: Double, rect: CGRect = .zero, boxFor: ((Range<String.Index>) -> CGRect?)? = nil) {
+        self.text = text; self.y = y; self.height = height; self.rect = rect; self.boxFor = boxFor
+    }
 }
 
 /// On-device OCR (Apple Vision). Nothing leaves the Mac.
@@ -29,7 +34,9 @@ public enum TextRecognizer {
         do { try handler.perform([request]) } catch { return [] }
         return (request.results ?? []).compactMap { o in
             guard let c = o.topCandidates(1).first, c.confidence > 0.4 else { return nil }
-            return TextLine(text: c.string, y: o.boundingBox.midY, height: o.boundingBox.height)
+            // Ranges must be taken on c.string itself, so `text` is exactly that string.
+            return TextLine(text: c.string, y: o.boundingBox.midY, height: o.boundingBox.height, rect: o.boundingBox,
+                            boxFor: { range in (try? c.boundingBox(for: range))?.boundingBox })
         }
     }
 

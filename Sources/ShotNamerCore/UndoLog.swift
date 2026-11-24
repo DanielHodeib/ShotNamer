@@ -8,8 +8,10 @@ public final class UndoLog {
         public let date: Date
         /// Folders the rename created (outermost first); removed on undo if they are empty again. Optional: absent in 0.1 logs.
         public let createdDirs: [String]?
-        public init(from: String, to: String, date: Date, createdDirs: [String]? = nil) {
-            self.from = from; self.to = to; self.date = date; self.createdDirs = createdDirs
+        /// Unredacted original, restored on undo. Optional: absent in older logs and when nothing was redacted.
+        public let backup: String?
+        public init(from: String, to: String, date: Date, createdDirs: [String]? = nil, backup: String? = nil) {
+            self.from = from; self.to = to; self.date = date; self.createdDirs = createdDirs; self.backup = backup
         }
     }
 

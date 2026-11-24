@@ -13,12 +13,15 @@ final class AppModel: ObservableObject {
     private var history = AppHistory()
     private var titles = AppHistory(capacity: 600) // window title over time; "" = none
     private var lastTitle: String?
+    private var redactionNote: String?
+    private let backupDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("ShotNamer/Originals", isDirectory: true)
     private var written: Set<String> = [] // files this app produced; never process them again
     private var watcher: FolderWatcher?
     private let ignoredBundles: Set<String> = ["com.apple.screencaptureui", Bundle.main.bundleIdentifier ?? ""]
 
     init() {
-        UserDefaults.standard.register(defaults: ["useOCR": false, "useTitle": true, "useSite": true, "searchable": true])
+        UserDefaults.standard.register(defaults: ["useOCR": false, "useTitle": true, "useSite": true, "searchable": true, "redact": false])
         // SHOTNAMER_FOLDER lets tests and debugging point the app at a scratch folder.
         if let p = ProcessInfo.processInfo.environment["SHOTNAMER_FOLDER"] {
             folder = URL(fileURLWithPath: p, isDirectory: true)
@@ -44,6 +47,7 @@ final class AppModel: ObservableObject {
             MainActor.assumeIsolated { self?.sampleTitle() }
         }
 
+        Redactor.purgeBackups(in: backupDir) // originals hold the redacted secrets: keep them 7 days only
         watcher = FolderWatcher(folder: folder) { [weak self] url in
             Task { @MainActor in await self?.handle(url) }
         }
@@ -81,16 +85,19 @@ final class AppModel: ObservableObject {
         let sortPath = UserDefaults.standard.string(forKey: "sortRoot") ?? ""
         let sortRoot = sortPath.isEmpty ? nil : URL(fileURLWithPath: sortPath, isDirectory: true)
         let searchable = UserDefaults.standard.bool(forKey: "searchable")
+        let redact = UserDefaults.standard.bool(forKey: "redact")
+        let backups = self.backupDir
         let log = self.log
         do {
             // OCR is slow; keep it off the main thread.
             let new = try await Task.detached {
                 try Renamer.rename(url, date: date, app: app, title: title, useSite: useSite, useOCR: useOCR, template: template,
-                                      sort: sort, sortRoot: sortRoot, searchable: searchable, log: log)
+                                      sort: sort, sortRoot: sortRoot, searchable: searchable, redact: redact, backupDir: backups,
+                                      onRedacted: { kinds in Task { @MainActor in self.redactionNote = "Blacked out: \(kinds.joined(separator: ", "))" } }, log: log)
             }.value
             written.insert(new.path)
+            if let note = redactionNote { status = note; redactionNote = nil } else { status = nil }
             recent = Array(([new] + recent).prefix(5))
-            status = nil
         } catch {
             status = "Rename failed: \(error.localizedDescription)"
         }
