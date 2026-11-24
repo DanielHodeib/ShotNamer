@@ -11,27 +11,25 @@ public enum Template {
     /// so a missing site gives "date - app - title", not "date - app -  - title".
     public static func render(_ template: String, values: [String: String]) -> String {
         var out = "", pending = ""
-        var lastEmitted = false, seenToken = false
+        var first = true, emitted = false
         var cursor = template.startIndex
         let ns = template as NSString
         for m in token.matches(in: template, range: NSRange(location: 0, length: ns.length)) {
             let r = Range(m.range, in: template)!
             pending += template[cursor..<r.lowerBound]
             cursor = r.upperBound
-            let seenTokenBefore = seenToken
             guard let value = values[ns.substring(with: m.range(at: 1))] else {
                 pending += template[r] // unknown {token} stays as typed
                 continue
             }
-            seenToken = true
-            if value.isEmpty { pending = ""; lastEmitted = false; continue }
-            // Keep the template's own prefix ("Shot "), but drop a separator whose left neighbour vanished.
-            if !out.isEmpty || !seenTokenBefore { out += pending }
+            if first { out += pending; pending = ""; first = false } // the template's own prefix ("Shot ") always stays
+            if value.isEmpty { pending = ""; continue } // drop the separator before an empty value
+            if emitted { out += pending } // no separator before the first value
             out += value
             pending = ""
-            lastEmitted = true
+            emitted = true
         }
-        if lastEmitted { out += pending + template[cursor...] }
+        if emitted { out += pending + template[cursor...] } // trailing text, e.g. " (shot)"
         return out
     }
 

@@ -62,7 +62,7 @@ struct SettingsView: View {
                 Picker("Sort screenshots", selection: $sortMode) {
                     ForEach(SortMode.allCases) { Text($0.label).tag($0.rawValue) }
                 }
-                if sortMode != SortMode.off.rawValue || !sortRoot.isEmpty {
+                if sortMode != SortMode.off.rawValue {
                     HStack {
                         Text("Into: \(sortRoot.isEmpty ? model.folder.path : sortRoot)")
                             .lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)

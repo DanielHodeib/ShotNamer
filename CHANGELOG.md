@@ -2,6 +2,9 @@
 
 ## 0.1.0 – unreleased
 
+- Automatic updates from Ed25519-signed GitHub releases; `scripts/release.sh` publishes one.
+- Review fixes: undo no longer gets re-renamed; a failed move after redaction restores the original; undo keeps its record until it succeeded; backups purged hourly and excluded from Time Machine; browser address cleared when another app is in front; page text no longer beats the browser's address; follows save-location changes; sort folder ignored when sorting is off; Spanish `p. m.` times; faint text is still redacted; 12-digit phone numbers are not cards; `.app`/`.ai` file names in pages are not sites; template keeps its own leading/trailing text; names capped at 255 bytes; AppleScript and Accessibility calls time out.
+
 - Settings window with a custom file name template (`{date} {time} {app} {site} {title}`).
 - Site detection without a visible address bar: browser address via AppleScript (opt-in), title evidence confirmed by the image, experimental header guess.
 - Optional redaction: black out e-mails, IBANs, card numbers, keys/tokens and passwords; original backed up 7 days; undo restores it.

@@ -42,7 +42,10 @@ public enum SensitiveDetector {
         }
         for m in email.matches(in: text, range: full) { add(m.range, "e-mail") }
         for m in iban.matches(in: text, range: full) { add(m.range, "IBAN") }
-        for m in cardGrouped.matches(in: text, range: full) { add(m.range, "card number") }
+        for m in cardGrouped.matches(in: text, range: full) {
+            // Cards have 13-19 digits; "0664 1234 5678" (12) is a phone number. No Luhn: a misread digit must not hide a card.
+            if let r = Range(m.range, in: text), (13...19).contains(text[r].filter(\.isNumber).count) { add(m.range, "card number") }
+        }
         for m in cardPlain.matches(in: text, range: full) {
             if let r = Range(m.range, in: text), luhn(String(text[r])) { add(m.range, "card number") }
         }

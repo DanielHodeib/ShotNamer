@@ -17,8 +17,9 @@ enum BrowserURL {
         guard let safari = supported[bundleID] else { return .none }
         let body = safari ? "URL of front document" : "URL of active tab of front window"
         var error: NSDictionary?
-        let out = NSAppleScript(source: "tell application id \"\(bundleID)\" to return \(body)")?.executeAndReturnError(&error)
-        if let code = error?[NSAppleScript.errorNumber] as? Int { return code == -1743 ? .denied : .none } // -1743: not allowed
+        let out = NSAppleScript(source: "with timeout of 1 seconds\ntell application id \"\(bundleID)\" to return \(body)\nend timeout")?.executeAndReturnError(&error)
+        // -1743: not allowed. -1712 (timeout, e.g. a hung browser) just gives no URL this second.
+        if let code = error?[NSAppleScript.errorNumber] as? Int { return code == -1743 ? .denied : .none }
         return out?.stringValue.map { .url($0) } ?? .none
     }
 }

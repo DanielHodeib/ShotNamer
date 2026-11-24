@@ -39,12 +39,22 @@ public final class UndoLog {
         return last
     }
 
+    /// Removes `r` (the newest matching record); a rename logged meanwhile is kept.
+    public func remove(_ r: Record) throws {
+        lock.lock(); defer { lock.unlock() }
+        var records = load()
+        guard let i = records.lastIndex(of: r) else { return }
+        records.remove(at: i)
+        try save(records)
+    }
+
     private func load() -> [Record] {
         guard let data = try? Data(contentsOf: url) else { return [] }
         let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601
         if let records = try? d.decode([Record].self, from: data) { return records }
         // Unreadable (corrupt or newer format): keep a copy so the next save does not destroy it.
-        try? FileManager.default.copyItem(at: url, to: url.appendingPathExtension("bak"))
+        // Timestamped: a fixed ".bak" name would make the copy fail (and the log be lost) the second time.
+        try? FileManager.default.copyItem(at: url, to: url.appendingPathExtension("\(Int(Date().timeIntervalSince1970)).bak"))
         return []
     }
 

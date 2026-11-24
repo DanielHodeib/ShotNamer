@@ -218,7 +218,9 @@ let utc = TimeZone(identifier: "UTC")!
         let url = dir.appendingPathComponent("renames.json")
         try "not json".write(to: url, atomically: true, encoding: .utf8)
         _ = UndoLog(url: url).all()
-        #expect(FileManager.default.fileExists(atPath: url.appendingPathExtension("bak").path))
+        _ = UndoLog(url: url).all() // a second corrupt read must not fail to back up
+        let baks = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasSuffix(".bak") }
+        #expect(!baks.isEmpty)
     }
 }
 
@@ -515,5 +517,87 @@ import CryptoKit
         try make("com.evil.app", "0.2.0")
         #expect(!Update.isAcceptable(app: bundle, releaseVersion: "0.2.0", bundleID: id, current: "0.1.0"))
         #expect(!Update.isAcceptable(app: dir, releaseVersion: "0.2.0", bundleID: id, current: "0.1.0"))    // no Info.plist
+    }
+}
+
+/// Regressions found in the full review (Nov 2026).
+@Suite struct ReviewFixTests {
+    func scratch() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+    func L(_ t: String, _ y: Double) -> TextLine { TextLine(text: t, y: y, height: 0.03) }
+
+    @Test func failedMoveAfterRedactionPutsTheOriginalBack() throws {
+        let dir = try scratch(); defer { try? FileManager.default.removeItem(at: dir) }
+        let log = UndoLog(url: dir.appendingPathComponent("log.json"))
+        let shot = dir.appendingPathComponent("Screenshot.png"); try RedactionTests().makePNG(at: shot)
+        let notAFolder = dir.appendingPathComponent("file"); try Data([1]).write(to: notAFolder) // sort target can't be created
+        let line = TextLine(text: "max@example.com", y: 0.5, height: 0.2, rect: CGRect(x: 0.1, y: 0.4, width: 0.5, height: 0.2))
+        #expect(throws: (any Error).self) {
+            try Renamer.rename(shot, date: Date(), app: "Mail", useOCR: false, sort: .month, sortRoot: notAFolder, redact: true,
+                               backupDir: dir.appendingPathComponent("Originals"), log: log, recognize: { _ in [line] })
+        }
+        #expect(!RedactionTests().pixelIsBlack(shot, x: 100, y: 100)) // unredacted original, under its own name
+        #expect(log.all().isEmpty)
+    }
+
+    @Test func faintTextIsRedactedButNotUsedForNames() throws {
+        let dir = try scratch(); defer { try? FileManager.default.removeItem(at: dir) }
+        let shot = dir.appendingPathComponent("Screenshot.png"); try RedactionTests().makePNG(at: shot)
+        let faint = TextLine(text: "Big faint max@example.com", y: 0.5, height: 0.9, rect: CGRect(x: 0.1, y: 0.4, width: 0.7, height: 0.2), confidence: 0.2)
+        var reported: [String] = []
+        let new = try Renamer.rename(shot, date: Date(timeIntervalSince1970: 0), app: "Mail", useOCR: true, redact: true,
+                                     backupDir: dir.appendingPathComponent("Originals"), onRedacted: { reported = $0 },
+                                     log: UndoLog(url: dir.appendingPathComponent("log.json")), recognize: { _ in [faint] })
+        #expect(reported == ["e-mail"])
+        #expect(!new.lastPathComponent.contains("faint"))
+    }
+
+    @Test func pageTextDoesNotBeatTheBrowserURL() throws {
+        let dir = try scratch(); defer { try? FileManager.default.removeItem(at: dir) }
+        let u = dir.appendingPathComponent("Screenshot.png"); try Data([1]).write(to: u)
+        let new = try Renamer.rename(u, date: Date(timeIntervalSince1970: 0), app: "Safari", useSite: true, useOCR: false,
+                                     knownSite: "reddit.com", log: UndoLog(url: dir.appendingPathComponent("log.json")),
+                                     recognize: { _ in [self.L("via imgur.com", 0.5), self.L("imgur.com", 0.3)] })
+        #expect(new.lastPathComponent.contains("reddit.com"))
+    }
+
+    @Test func fileNamesInPagesAreNotSites() {
+        #expect(SiteDetector.domain(in: [L("Open /Applications/Xcode.app now", 0.5)]) == nil)
+        #expect(SiteDetector.domain(in: [L("claude.ai", 0.95)]) == "claude.ai") // in the address bar it is a site
+    }
+
+    @Test func phoneNumbersAreNotCards() {
+        #expect(SensitiveDetector.matches(in: "Call 0664 1234 5678").isEmpty)
+        #expect(SensitiveDetector.matches(in: "4111 1111 1111 1111").map(\.kind) == ["card number"])
+    }
+
+    @Test func templateKeepsItsOwnTextWhenTheFirstTokenIsEmpty() {
+        #expect(Template.render("Shot {app} {date}", values: ["app": "", "date": "d"]) == "Shot d")
+        #expect(Template.render("{date} {app} (mine)", values: ["app": "", "date": "d"]) == "d (mine)")
+        #expect(Template.render("{date} - {app} - {title}", values: ["date": "d", "app": "", "title": "t"]) == "d - t")
+    }
+
+    @Test func spanishTwelveHourTimes() {
+        let d = FileNamer.captureDate(fromFilename: "Captura de pantalla 2026-11-24 a las 2.32.10 p. m..png", timeZone: utc)
+        #expect(d.map { Calendar(identifier: .gregorian).dateComponents(in: utc, from: $0).hour } == 14)
+    }
+
+    @Test func longUnicodeNamesFitTheFileSystem() {
+        let name = FileNamer.makeName(date: Date(), app: String(repeating: "漢", count: 40), site: "example.com",
+                                      text: String(repeating: "😀", count: 60), ext: "png")
+        #expect(name.utf8.count <= 255)
+    }
+
+    @Test func undoOfAMissingFileDropsOnlyThatRecord() throws {
+        let dir = try scratch(); defer { try? FileManager.default.removeItem(at: dir) }
+        let log = UndoLog(url: dir.appendingPathComponent("log.json"))
+        let keep = UndoLog.Record(from: "/a", to: "/b", date: Date(timeIntervalSince1970: 1))
+        try log.append(keep)
+        try log.append(.init(from: "/x", to: dir.appendingPathComponent("gone.png").path, date: Date(timeIntervalSince1970: 2)))
+        #expect(throws: (any Error).self) { try Renamer.undoLast(log: log) }
+        #expect(log.all() == [keep])
     }
 }

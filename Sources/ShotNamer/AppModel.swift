@@ -8,15 +8,16 @@ final class AppModel: ObservableObject {
     @Published var recent: [URL] = []
     @Published var status: String?
 
-    let folder: URL
+    @Published private(set) var folder: URL
+    private let fixedFolder: Bool // SHOTNAMER_FOLDER set: never follow the system setting
     private let log: UndoLog
     private var history = AppHistory()
     private var titles = AppHistory(capacity: 600) // window title over time; "" = none
     private var lastTitle: String?
     private var urls = AppHistory(capacity: 600) // browser domain over time; "" = none
     private var lastURL: String?
-    private var urlDenied = false
-    private var redactionNote: String?
+    private var urlDenied: Set<String> = [] // browsers that refused Automation; the others still work
+    private var ticks = 0
     private let backupDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("ShotNamer/Originals", isDirectory: true)
     private var written: Set<String> = [] // files this app produced; never process them again
@@ -29,9 +30,9 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.register(defaults: ["useOCR": false, "useTitle": true, "useSite": true, "searchable": true, "redact": false, "useBrowserURL": false, "textSites": false, "autoUpdate": true])
         // SHOTNAMER_FOLDER lets tests and debugging point the app at a scratch folder.
         if let p = ProcessInfo.processInfo.environment["SHOTNAMER_FOLDER"] {
-            folder = URL(fileURLWithPath: p, isDirectory: true)
+            folder = URL(fileURLWithPath: p, isDirectory: true); fixedFolder = true
         } else {
-            folder = Renamer.screenshotFolder()
+            folder = Renamer.screenshotFolder(); fixedFolder = false
         }
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("ShotNamer", isDirectory: true)
@@ -49,17 +50,34 @@ final class AppModel: ObservableObject {
         if UserDefaults.standard.bool(forKey: "useTitle"), !WindowTitle.isTrusted { WindowTitle.requestPermission() }
         // Sample the focused window title once a second so the right one is known at capture time.
         Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.sampleTitle() }
+            MainActor.assumeIsolated { self?.tick() }
         }
 
         Redactor.purgeBackups(in: backupDir) // originals hold the redacted secrets: keep them 7 days only
+        startWatching()
+        updater.startSchedule { [weak self] msg in self?.status = msg }
+    }
+
+    private func startWatching() {
         watcher = FolderWatcher(folder: folder) { [weak self] url in
             Task { @MainActor in await self?.handle(url) }
         }
         if watcher?.start() != true {
+            watcher = nil
             status = "Can't read \(folder.lastPathComponent). Allow folder access in System Settings › Privacy & Security."
+        } else if status?.hasPrefix("Can't read") == true {
+            status = nil
         }
-        updater.startSchedule { [weak self] msg in self?.status = msg }
+    }
+
+    private func tick() {
+        sampleTitle()
+        ticks += 1
+        guard ticks % 10 == 0 else { return }
+        // The save location can change in the ⌘⇧5 options; a failed start (no permission yet) is retried.
+        let now = fixedFolder ? folder : Renamer.screenshotFolder()
+        if now != folder { folder = now; startWatching() } else if watcher == nil { startWatching() }
+        if ticks % 3600 == 0 { Redactor.purgeBackups(in: backupDir) } // hourly: the app can run for weeks
     }
 
     private func note(_ app: NSRunningApplication) {
@@ -68,15 +86,15 @@ final class AppModel: ObservableObject {
     }
 
     private func sampleURL() {
-        guard UserDefaults.standard.bool(forKey: "useBrowserURL"), !urlDenied,
+        guard UserDefaults.standard.bool(forKey: "useBrowserURL"),
               let app = NSWorkspace.shared.frontmostApplication, let bid = app.bundleIdentifier,
-              BrowserURL.supported[bid] != nil else { return }
-        var domain = ""
-        switch BrowserURL.current(bundleID: bid) {
+              !ignoredBundles.contains(bid) else { return }
+        var domain = "" // any other app in front (e.g. Firefox): the last browser's page is no longer what is shown
+        switch BrowserURL.supported[bid] == nil || urlDenied.contains(bid) ? .none : BrowserURL.current(bundleID: bid) {
         case .url(let u): domain = SiteDetector.domain(ofURL: u) ?? ""
         case .none: break
         case .denied:
-            urlDenied = true
+            urlDenied.insert(bid)
             status = "Allow ShotNamer to control \(app.localizedName ?? "the browser") in Privacy & Security › Automation to read page addresses."
         }
         guard domain != lastURL else { return }
@@ -109,23 +127,24 @@ final class AppModel: ObservableObject {
         let template = UserDefaults.standard.string(forKey: "nameTemplate") ?? Template.defaultName
         let sort = SortMode(rawValue: UserDefaults.standard.string(forKey: "sortMode") ?? "") ?? .off
         let sortPath = UserDefaults.standard.string(forKey: "sortRoot") ?? ""
-        let sortRoot = sortPath.isEmpty ? nil : URL(fileURLWithPath: sortPath, isDirectory: true)
+        let sortRoot = sortPath.isEmpty || sort == .off ? nil : URL(fileURLWithPath: sortPath, isDirectory: true)
         let searchable = UserDefaults.standard.bool(forKey: "searchable")
         let redact = UserDefaults.standard.bool(forKey: "redact")
         let backups = self.backupDir
         let knownSite = UserDefaults.standard.bool(forKey: "useBrowserURL") ? urls.app(at: date).flatMap { $0.isEmpty ? nil : $0 } : nil
         let textSites = UserDefaults.standard.bool(forKey: "textSites")
         let log = self.log
+        let note = RedactionNote()
         do {
             // OCR is slow; keep it off the main thread.
             let new = try await Task.detached {
                 try Renamer.rename(url, date: date, app: app, title: title, useSite: useSite, useOCR: useOCR, template: template,
                                       sort: sort, sortRoot: sortRoot, searchable: searchable, redact: redact, backupDir: backups,
-                                      onRedacted: { kinds in Task { @MainActor in self.redactionNote = "Blacked out: \(kinds.joined(separator: ", "))" } },
+                                      onRedacted: { note.kinds = $0 },
                                       knownSite: knownSite, textSites: textSites, log: log)
             }.value
             written.insert(new.path)
-            if let note = redactionNote { status = note; redactionNote = nil } else { status = nil }
+            status = note.kinds.isEmpty ? nil : "Blacked out: \(note.kinds.joined(separator: ", "))"
             recent = Array(([new] + recent).prefix(5))
         } catch {
             status = "Rename failed: \(error.localizedDescription)"
@@ -161,6 +180,7 @@ final class AppModel: ObservableObject {
     func undoLast() {
         do {
             if let restored = try Renamer.undoLast(log: log) {
+                written.insert(restored.path) // it reappears under its screenshot name; don't rename it again
                 recent.removeAll { !FileManager.default.fileExists(atPath: $0.path) }
                 status = "Restored \(restored.lastPathComponent)"
             } else {
@@ -183,3 +203,6 @@ final class AppModel: ObservableObject {
         }
     }
 }
+
+/// Set from the rename task (off the main thread), read after it returns: per screenshot, no shared state.
+private final class RedactionNote: @unchecked Sendable { var kinds: [String] = [] }

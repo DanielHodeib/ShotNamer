@@ -9,9 +9,12 @@ public struct TextLine {
     public let y: Double
     public let height: Double
     public let rect: CGRect
+    /// OCR confidence 0…1. Naming uses > 0.4; redaction also covers fainter text.
+    public let confidence: Float
     let boxFor: ((Range<String.Index>) -> CGRect?)?
-    public init(text: String, y: Double, height: Double, rect: CGRect = .zero, boxFor: ((Range<String.Index>) -> CGRect?)? = nil) {
-        self.text = text; self.y = y; self.height = height; self.rect = rect; self.boxFor = boxFor
+    public init(text: String, y: Double, height: Double, rect: CGRect = .zero, confidence: Float = 1,
+                boxFor: ((Range<String.Index>) -> CGRect?)? = nil) {
+        self.text = text; self.y = y; self.height = height; self.rect = rect; self.confidence = confidence; self.boxFor = boxFor
     }
 }
 
@@ -33,10 +36,10 @@ public enum TextRecognizer {
         request.automaticallyDetectsLanguage = true
         do { try handler.perform([request]) } catch { return [] }
         return (request.results ?? []).compactMap { o in
-            guard let c = o.topCandidates(1).first, c.confidence > 0.4 else { return nil }
+            guard let c = o.topCandidates(1).first, c.confidence > 0.1 else { return nil }
             // Ranges must be taken on c.string itself, so `text` is exactly that string.
             return TextLine(text: c.string, y: o.boundingBox.midY, height: o.boundingBox.height, rect: o.boundingBox,
-                            boxFor: { range in (try? c.boundingBox(for: range))?.boundingBox })
+                            confidence: c.confidence, boxFor: { range in (try? c.boundingBox(for: range))?.boundingBox })
         }
     }
 

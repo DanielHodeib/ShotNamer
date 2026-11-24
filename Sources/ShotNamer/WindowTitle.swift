@@ -13,6 +13,7 @@ enum WindowTitle {
     static func focused(pid: pid_t, appName: String) -> String? {
         guard isTrusted else { return nil }
         let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 0.25) // runs every second on the main thread; a hung app must not freeze us
         var window: CFTypeRef?
         guard AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute as CFString, &window) == .success,
               let window else { return nil }

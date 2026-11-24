@@ -16,6 +16,11 @@ public enum SiteDetector {
     private static let pattern = try! NSRegularExpression(
         pattern: #"(?<![@\w.-])((?:[a-z0-9-]+\.)+(?:\#(tlds)))(?![\w-])"#, options: .caseInsensitive)
 
+    /// Domain in the top strip of the image (the address bar), the highest one if several.
+    public static func addressBarDomain(in lines: [TextLine]) -> String? {
+        lines.filter { $0.y > 0.8 }.sorted { $0.y > $1.y }.lazy.compactMap { domain(in: [$0]) }.first
+    }
+
     /// "willhaben.at/iad/myprofile" → "willhaben.at". A match in the top strip (address bar) wins;
     /// otherwise the most frequent domain in the image.
     public static func domain(in lines: [TextLine]) -> String? {
@@ -27,6 +32,8 @@ public enum SiteDetector {
             for m in pattern.matches(in: line.text, range: NSRange(location: 0, length: ns.length)) {
                 let d = registrable(ns.substring(with: m.range(at: 1)))
                 if line.y > 0.8 { top.append((d, line.y)) }
+                // "Xcode.app", "logo.ai" in page text are file names far more often than sites.
+                else if d.hasSuffix(".app") || d.hasSuffix(".ai") { continue }
                 if counts[d] == nil { order.append(d) }
                 counts[d, default: 0] += 1
             }

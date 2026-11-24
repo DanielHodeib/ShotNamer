@@ -35,14 +35,15 @@ public enum FileNamer {
     /// "Bildschirmfoto 2026-11-24 um 14.32.10.png"). Works for any locale; nil if no match.
     /// The file's own creation date can lag the shutter by seconds (floating thumbnail).
     public static func captureDate(fromFilename name: String, timeZone: TimeZone = .current) -> Date? {
-        let pattern = #/(\d{4})-(\d{2})-(\d{2})\D+?(\d{1,2})[.:](\d{2})[.:](\d{2})\s*(AM|PM|am|pm)?/#
+        // 12-hour suffixes: "PM", "pm", "p.m.", "p. m." (Spanish).
+        let pattern = #/(\d{4})-(\d{2})-(\d{2})\D+?(\d{1,2})[.:](\d{2})[.:](\d{2})\s*(?:([AaPp])\.?\s?[Mm](?![A-Za-z])\.?)?/#
         guard let m = name.firstMatch(of: pattern) else { return nil }
         var comps = DateComponents()
         comps.timeZone = timeZone
         comps.year = Int(m.1); comps.month = Int(m.2); comps.day = Int(m.3)
         var hour = Int(m.4) ?? 0
         if let ampm = m.7?.lowercased() {
-            hour = hour % 12 + (ampm == "pm" ? 12 : 0)
+            hour = hour % 12 + (ampm == "p" ? 12 : 0)
         }
         comps.hour = hour; comps.minute = Int(m.5); comps.second = Int(m.6)
         var cal = Calendar(identifier: .gregorian)
@@ -73,6 +74,8 @@ public enum FileNamer {
         ]
         var name = Template.render(Template.isValidName(template) ? template : Template.defaultName, values: values)
         name = name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: ".")
+        // File names are capped at 255 bytes; emoji/CJK titles can exceed that within the character caps.
+        while name.utf8.count > 230 { name.removeLast() }
         return name + "." + ext
     }
 
