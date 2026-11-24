@@ -19,7 +19,7 @@ public enum Renamer {
     /// Renames `url` in place and logs it for undo. Returns the new URL.
     @discardableResult
     public static func rename(_ url: URL, date: Date, app: String?, title: String? = nil,
-                              useSite: Bool = false, useOCR: Bool, log: UndoLog,
+                              useSite: Bool = false, useOCR: Bool, template: String = Template.defaultName, log: UndoLog,
                               recognize: (URL) -> [TextLine] = TextRecognizer.lines) throws -> URL {
         let title = title.flatMap { $0.isEmpty ? nil : $0 }
         let wantSite = useSite && SiteDetector.isBrowser(app)
@@ -30,7 +30,8 @@ public enum Renamer {
         var text = title
         if let t = title, let s = site, SiteDetector.isRedundant(title: t, site: s) { text = nil }
         if title == nil && useOCR { text = TextRecognizer.headline(from: lines) }
-        let name = FileNamer.makeName(date: date, app: app, site: site, text: text, ext: url.pathExtension.lowercased())
+        let name = FileNamer.makeName(date: date, app: app, site: site, text: text,
+                                     ext: url.pathExtension.lowercased(), template: template)
         let dest = FileNamer.uniqueURL(in: url.deletingLastPathComponent(), name: name)
         try FileManager.default.moveItem(at: url, to: dest)
         try log.append(.init(from: url.path, to: dest.path, date: Date()))

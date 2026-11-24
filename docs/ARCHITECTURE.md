@@ -9,10 +9,12 @@ Sources/
     AppHistory.swift    "which app was frontmost at time T"
     TextRecognizer.swift  Vision OCR → text lines with position; biggest-text fallback
     SiteDetector.swift  domain from the address-bar text; browser check; redundancy check
+    Template.swift      {token} engine: missing tokens drop their separator; validity check (no rename loops)
     UndoLog.swift       JSON list of renames in ~/Library/Application Support/ShotNamer/
     Renamer.swift       screenshot folder lookup, rename + log, undo
   ShotNamer/            the menu bar app (SwiftUI MenuBarExtra)
-    ShotNamerApp.swift  menu UI
+    ShotNamerApp.swift  menu UI + settings window scene
+    SettingsView.swift  settings form
     AppModel.swift      wires watcher, app-activation tracking, rename, undo
     WindowTitle.swift   focused-window title via Accessibility API
     FolderWatcher.swift DispatchSource on the folder; reports new screenshot files
@@ -34,7 +36,7 @@ scripts/install.sh      build-app + copy to /Applications + restart
 
 ## Decisions
 
-- **No rename loops.** Renamed files start with a date, never a screenshot prefix; a test enforces this.
+- **No rename loops.** Three layers: the default template starts with a date; `Template.isValidName` rejects custom templates whose output looks like a screenshot (so the default is used); and `AppModel` remembers every path it wrote and ignores it if the watcher reports it again.
 - **Accessibility for titles, not Screen Recording.** Reading a window title via AX needs only the Accessibility permission and avoids the recording-indicator prompt. OCR was the first attempt for the text part but picked ads and placeholders, so it is only a fallback.
 - **Site from OCR, not Accessibility.** The address bar is in the screenshot, so OCR needs no permission and also works for sites the user can see but the browser does not expose. A restricted TLD list and browser-only scanning avoid false positives (e-mail addresses, numbers like `13.797.610`).
 - **On-device OCR only.** Apple Vision; no network code anywhere.

@@ -10,6 +10,9 @@ public enum FileNamer {
     // Screen recordings (.mov) are deliberately not handled.
     static let extensions: Set<String> = ["png", "jpg", "jpeg", "heic", "tiff"]
 
+    /// Screenshot or screen recording.
+    public static func isCapture(filename: String) -> Bool { isScreenshot(filename: filename) }
+
     public static func isScreenshot(filename: String) -> Bool {
         guard !filename.hasPrefix(".") else { return false }
         let ext = (filename as NSString).pathExtension.lowercased()
@@ -45,18 +48,20 @@ public enum FileNamer {
         return out.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
     }
 
-    /// "2026-11-24 14.32.10 - Safari - github.com - Page title.png"
+    /// "2026-11-24 14.32.10 - Safari - github.com - Page title.png" with the default template.
     public static func makeName(date: Date, app: String?, site: String? = nil, text: String?, ext: String,
-                                timeZone: TimeZone = .current) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = timeZone
-        f.dateFormat = "yyyy-MM-dd HH.mm.ss"
-        var parts = [f.string(from: date)]
-        if let app = app.map({ sanitize($0, maxLength: 30) }), !app.isEmpty { parts.append(app) }
-        if let site = site.map({ sanitize($0, maxLength: 40) }), !site.isEmpty { parts.append(site) }
-        if let text = text.map({ sanitize($0) }), !text.isEmpty { parts.append(text) }
-        return parts.joined(separator: " - ") + "." + ext
+                                template: String = Template.defaultName, timeZone: TimeZone = .current) -> String {
+        let d = DateFormatter(); d.locale = Locale(identifier: "en_US_POSIX"); d.timeZone = timeZone
+        d.dateFormat = "yyyy-MM-dd"
+        let t = DateFormatter(); t.locale = d.locale; t.timeZone = timeZone; t.dateFormat = "HH.mm.ss"
+        let values = [
+            "date": d.string(from: date), "time": t.string(from: date),
+            "app": sanitize(app ?? "", maxLength: 30), "site": sanitize(site ?? "", maxLength: 40),
+            "title": sanitize(text ?? ""),
+        ]
+        var name = Template.render(Template.isValidName(template) ? template : Template.defaultName, values: values)
+        name = name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: ".")
+        return name + "." + ext
     }
 
     /// `name`, or `name 2`, `name 3` … if the file already exists in `dir`.

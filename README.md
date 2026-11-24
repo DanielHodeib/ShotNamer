@@ -41,12 +41,17 @@ Take screenshots as usual (⌘⇧3, ⌘⇧4, ⌘⇧5). A camera icon in the menu
 | Item | What it does |
 |---|---|
 | Pause | Stop renaming without quitting |
-| Detect website | Read the address bar in browser screenshots and put the domain in the name |
-| Add window / tab title | Put the focused window's title in the name (needs Accessibility permission) |
-| Fallback: add biggest text in image | Off by default. Used only if there is no window title |
 | Launch at login | Start automatically |
+| Settings… | File name template and what goes into the name (see below) |
 | Recent | Last five renamed files; click to reveal in Finder |
 | Undo last rename | Restore the previous original filename |
+
+### Settings
+
+- **File name template.** Default `{date} {time} - {app} - {site} - {title}`. Tokens: `{date}` `{time}` `{app}` `{site}` `{title}`. A part that is missing (no site, say) disappears together with the separator before it. Example: `{app} · {date} {time}` → `Safari · 2026-11-24 14.32.10.png`. The template must contain `{date}` or `{time}` and must not produce names that look like a fresh macOS screenshot (`Screenshot …`); otherwise the default is used.
+- **Website** – read the address bar in browser screenshots.
+- **Window / tab title** – needs Accessibility permission.
+- **Biggest-text fallback** – off by default.
 
 ### Permissions
 

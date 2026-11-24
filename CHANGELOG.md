@@ -2,6 +2,8 @@
 
 ## 0.1.0 – unreleased
 
+- Settings window with a custom file name template (`{date} {time} {app} {site} {title}`).
+- Undo log: a log that cannot be read is backed up to `renames.json.bak` instead of being overwritten.
 - Menu bar app that renames new screenshots to `date - app - headline text`.
 - Website name from the address bar in browser screenshots (on-device OCR, no permission).
 - App icon.

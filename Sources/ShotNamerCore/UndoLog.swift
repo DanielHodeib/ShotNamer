@@ -36,7 +36,10 @@ public final class UndoLog {
     private func load() -> [Record] {
         guard let data = try? Data(contentsOf: url) else { return [] }
         let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601
-        return (try? d.decode([Record].self, from: data)) ?? []
+        if let records = try? d.decode([Record].self, from: data) { return records }
+        // Unreadable (corrupt or newer format): keep a copy so the next save does not destroy it.
+        try? FileManager.default.copyItem(at: url, to: url.appendingPathExtension("bak"))
+        return []
     }
 
     private func save(_ records: [Record]) throws {

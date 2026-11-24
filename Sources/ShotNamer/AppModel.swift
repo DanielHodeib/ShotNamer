@@ -12,6 +12,7 @@ final class AppModel: ObservableObject {
     private var history = AppHistory()
     private var titles = AppHistory(capacity: 600) // window title over time; "" = none
     private var lastTitle: String?
+    private var written: Set<String> = [] // files this app produced; never process them again
     private var watcher: FolderWatcher?
     private let ignoredBundles: Set<String> = ["com.apple.screencaptureui", Bundle.main.bundleIdentifier ?? ""]
 
@@ -67,17 +68,21 @@ final class AppModel: ObservableObject {
 
     private func handle(_ url: URL) async {
         guard !UserDefaults.standard.bool(forKey: "paused"), await waitUntilStable(url) else { return }
+        // Checked after the wait: our own rename finishes (and is recorded) well within it.
+        guard !written.contains(url.path) else { return }
         let date = Renamer.captureDate(of: url)
         let app = history.app(at: date)
         let title = UserDefaults.standard.bool(forKey: "useTitle") ? titles.app(at: date) : nil
         let useOCR = UserDefaults.standard.bool(forKey: "useOCR")
         let useSite = UserDefaults.standard.bool(forKey: "useSite")
+        let template = UserDefaults.standard.string(forKey: "nameTemplate") ?? Template.defaultName
         let log = self.log
         do {
             // OCR is slow; keep it off the main thread.
             let new = try await Task.detached {
-                try Renamer.rename(url, date: date, app: app, title: title, useSite: useSite, useOCR: useOCR, log: log)
+                try Renamer.rename(url, date: date, app: app, title: title, useSite: useSite, useOCR: useOCR, template: template, log: log)
             }.value
+            written.insert(new.path)
             recent = Array(([new] + recent).prefix(5))
             status = nil
         } catch {

@@ -157,3 +157,63 @@ let utc = TimeZone(identifier: "UTC")!
         #expect(other.lastPathComponent.hasSuffix("Mail.png"))
     }
 }
+
+@Suite struct TemplateTests {
+    let all = ["date": "2026-11-24", "time": "14.32.10", "app": "Safari", "site": "github.com", "title": "Pull requests"]
+
+    @Test func defaultTemplateReproducesTheOriginalNames() {
+        #expect(Template.render(Template.defaultName, values: all) == "2026-11-24 14.32.10 - Safari - github.com - Pull requests")
+        var v = all; v["site"] = ""
+        #expect(Template.render(Template.defaultName, values: v) == "2026-11-24 14.32.10 - Safari - Pull requests")
+        v["app"] = ""; v["title"] = ""
+        #expect(Template.render(Template.defaultName, values: v) == "2026-11-24 14.32.10")
+    }
+
+    @Test func customTemplatesAndMissingLeadingTokens() {
+        #expect(Template.render("{site} · {date}", values: all) == "github.com · 2026-11-24")
+        var v = all; v["site"] = ""
+        #expect(Template.render("{site} · {date}", values: v) == "2026-11-24")
+        #expect(Template.render("{date}_{app}", values: all) == "2026-11-24_Safari")
+        #expect(Template.render("{date} {nope}", values: all) == "2026-11-24 {nope}") // unknown token kept
+    }
+
+    @Test func rejectsTemplatesThatWouldCauseRenameLoopsOrCollisions() {
+        #expect(Template.isValidName(Template.defaultName))
+        #expect(!Template.isValidName("Screenshot {date} {time}")) // output looks like a new screenshot
+        #expect(!Template.isValidName("{app} - {site}"))           // no date/time → names collide
+        #expect(!Template.isValidName(""))
+        #expect(FileNamer.makeName(date: Date(timeIntervalSince1970: 0), app: "A", text: nil, ext: "png",
+                                   template: "Screenshot {date}", timeZone: utc) == "1970-01-01 00.00.00 - A.png") // falls back to default
+    }
+
+    @Test func tokenValuesCannotCreateFolders() {
+        let name = FileNamer.makeName(date: Date(timeIntervalSince1970: 0), app: "a/b", site: nil, text: "x/../y: z",
+                                      ext: "png", template: "{date}/{title}", timeZone: utc)
+        #expect(!name.contains("/") && !name.contains(":"))
+    }
+}
+
+@Suite struct UndoLogCompatTests {
+    @Test func readsTheLogFormatWrittenByEarlierVersions() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("renames.json")
+        // exact shape of the 0.1 file on disk: date, from, to
+        try #"[{"date":"2026-11-24T07:34:52Z","from":"/a/Screenshot.png","to":"/a/2026-11-24 - X.png"}]"#.write(to: url, atomically: true, encoding: .utf8)
+        let log = UndoLog(url: url)
+        #expect(log.all().count == 1)
+        try log.append(.init(from: "/b", to: "/c", date: Date()))
+        #expect(log.all().count == 2) // old record survived the rewrite
+    }
+
+    @Test func corruptLogIsBackedUpNotDestroyed() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("renames.json")
+        try "not json".write(to: url, atomically: true, encoding: .utf8)
+        _ = UndoLog(url: url).all()
+        #expect(FileManager.default.fileExists(atPath: url.appendingPathExtension("bak").path))
+    }
+}
