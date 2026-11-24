@@ -21,10 +21,12 @@ final class AppModel: ObservableObject {
         .appendingPathComponent("ShotNamer/Originals", isDirectory: true)
     private var written: Set<String> = [] // files this app produced; never process them again
     private var watcher: FolderWatcher?
+    private var inFlight = 0 // renames running; the updater waits for 0 before it swaps the app
+    private(set) lazy var updater = Updater(isBusy: { [unowned self] in self.inFlight > 0 })
     private let ignoredBundles: Set<String> = ["com.apple.screencaptureui", Bundle.main.bundleIdentifier ?? ""]
 
     init() {
-        UserDefaults.standard.register(defaults: ["useOCR": false, "useTitle": true, "useSite": true, "searchable": true, "redact": false, "useBrowserURL": false, "textSites": false])
+        UserDefaults.standard.register(defaults: ["useOCR": false, "useTitle": true, "useSite": true, "searchable": true, "redact": false, "useBrowserURL": false, "textSites": false, "autoUpdate": true])
         // SHOTNAMER_FOLDER lets tests and debugging point the app at a scratch folder.
         if let p = ProcessInfo.processInfo.environment["SHOTNAMER_FOLDER"] {
             folder = URL(fileURLWithPath: p, isDirectory: true)
@@ -57,6 +59,7 @@ final class AppModel: ObservableObject {
         if watcher?.start() != true {
             status = "Can't read \(folder.lastPathComponent). Allow folder access in System Settings › Privacy & Security."
         }
+        updater.startSchedule { [weak self] msg in self?.status = msg }
     }
 
     private func note(_ app: NSRunningApplication) {
@@ -93,6 +96,8 @@ final class AppModel: ObservableObject {
     }
 
     private func handle(_ url: URL) async {
+        inFlight += 1
+        defer { inFlight -= 1 }
         guard !UserDefaults.standard.bool(forKey: "paused"), await waitUntilStable(url) else { return }
         // Checked after the wait: our own rename finishes (and is recorded) well within it.
         guard !written.contains(url.path) else { return }
@@ -146,6 +151,11 @@ final class AppModel: ObservableObject {
             try? await Task.sleep(for: .milliseconds(video ? 1000 : 500))
         }
         return false
+    }
+
+    func checkForUpdates() {
+        status = "Checking for updates…"
+        Task { status = await updater.check(manual: true) }
     }
 
     func undoLast() {

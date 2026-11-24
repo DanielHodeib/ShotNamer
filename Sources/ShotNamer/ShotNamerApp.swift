@@ -42,6 +42,7 @@ struct MenuContent: View {
             Divider()
         }
         Button("Open screenshot folder") { NSWorkspace.shared.open(model.folder) }
+        Button("Check for updates (v\(Updater.currentVersion))") { model.checkForUpdates() }
         Button("Quit ShotNamer") { NSApplication.shared.terminate(nil) }
             .keyboardShortcut("q")
     }

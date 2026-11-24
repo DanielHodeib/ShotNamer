@@ -16,6 +16,8 @@ cp "$BIN/ShotNamer" "$APP/Contents/MacOS/ShotNamer"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
-# Ad-hoc signature: runs locally. Ad-hoc identity changes per build, so macOS may re-ask for folder access.
-codesign --force --sign - "$APP"
+# SHOTNAMER_SIGN_IDENTITY: a code-signing certificate name (e.g. a self-signed one from Keychain Access).
+# With one fixed identity, macOS keeps Accessibility/Automation grants across updates. Default "-" = ad-hoc:
+# the identity changes per build, so those grants reset after every install or update.
+codesign --force --sign "${SHOTNAMER_SIGN_IDENTITY:--}" "$APP"
 echo "Built $APP"

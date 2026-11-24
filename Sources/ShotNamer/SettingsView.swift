@@ -13,6 +13,7 @@ struct SettingsView: View {
     @AppStorage("redact") private var redact = false
     @AppStorage("sortMode") private var sortMode = SortMode.off.rawValue
     @AppStorage("sortRoot") private var sortRoot = ""
+    @AppStorage("autoUpdate") private var autoUpdate = true
 
     private var preview: String {
         FileNamer.makeName(date: Date(), app: "Safari", site: "github.com", text: "Pull requests", ext: "png", template: template)
@@ -71,6 +72,11 @@ struct SettingsView: View {
                     }
                 }
                 Text("Undo moves a file back and removes folders it created.").font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Updates") {
+                Toggle("Install updates automatically", isOn: $autoUpdate)
+                Text("Checks GitHub releases every 6 hours. Only releases signed with the ShotNamer key are installed.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

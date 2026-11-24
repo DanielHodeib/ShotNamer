@@ -462,3 +462,58 @@ import UniformTypeIdentifiers
         #expect(try name(lines: [L("YouTube", 0.95)], title: nil, known: nil, text: false).hasSuffix("Brave Browser.png"))  // experimental: opt-in
     }
 }
+
+import CryptoKit
+
+@Suite struct UpdateTests {
+    @Test func comparesVersions() {
+        #expect(Update.isNewer("v0.2.0", than: "0.1.0"))
+        #expect(Update.isNewer("0.1.10", than: "0.1.9"))   // numeric, not string, comparison
+        #expect(Update.isNewer("1.0", than: "0.9.9"))
+        #expect(!Update.isNewer("0.1.0", than: "0.1.0"))
+        #expect(!Update.isNewer("0.1", than: "0.1.0"))      // equal after padding
+        #expect(!Update.isNewer("0.0.9", than: "0.1.0"))    // never downgrade
+        #expect(!Update.isNewer("latest", than: "0.1.0"))   // garbage tag
+        #expect(!Update.isNewer("v1.0.0-beta", than: "0.1.0"))
+    }
+
+    @Test func parsesAGitHubRelease() throws {
+        let json = #"{"tag_name":"v0.2.0","draft":false,"prerelease":false,"name":"x","assets":[{"name":"ShotNamer.zip","browser_download_url":"https://github.com/a/b/releases/download/v0.2.0/ShotNamer.zip","size":1},{"name":"ShotNamer.zip.sig","browser_download_url":"https://github.com/a/b/releases/download/v0.2.0/ShotNamer.zip.sig"}]}"#
+        let r = try JSONDecoder().decode(Update.Release.self, from: Data(json.utf8))
+        #expect(r.version == "0.2.0")
+        #expect(r.asset(Update.zipName)?.lastPathComponent == "ShotNamer.zip")
+        #expect(r.asset(Update.signatureName) != nil)
+        #expect(r.asset("other") == nil)
+    }
+
+    @Test func onlyAcceptsCorrectlySignedData() throws {
+        let key = Curve25519.Signing.PrivateKey()
+        let pub = key.publicKey.rawRepresentation.base64EncodedString()
+        let data = Data("the real update".utf8)
+        let sig = try key.signature(for: data).base64EncodedString()
+        #expect(Update.verify(data, signatureBase64: sig, publicKeyBase64: pub))
+        #expect(!Update.verify(Data("tampered update".utf8), signatureBase64: sig, publicKeyBase64: pub))
+        let other = Curve25519.Signing.PrivateKey().publicKey.rawRepresentation.base64EncodedString()
+        #expect(!Update.verify(data, signatureBase64: sig, publicKeyBase64: other))   // signed by someone else
+        #expect(!Update.verify(data, signatureBase64: "not base64!", publicKeyBase64: pub))
+    }
+
+    @Test func refusesAWrongAppInsideTheZip() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let app = dir.appendingPathComponent("ShotNamer.app/Contents", isDirectory: true)
+        try FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        func make(_ id: String, _ v: String) throws {
+            try (["CFBundleIdentifier": id, "CFBundleShortVersionString": v] as NSDictionary)
+                .write(to: app.appendingPathComponent("Info.plist"))
+        }
+        let bundle = dir.appendingPathComponent("ShotNamer.app"), id = "io.github.danielhodeib.ShotNamer"
+        try make(id, "0.2.0")
+        #expect(Update.isAcceptable(app: bundle, releaseVersion: "0.2.0", bundleID: id, current: "0.1.0"))
+        #expect(!Update.isAcceptable(app: bundle, releaseVersion: "0.3.0", bundleID: id, current: "0.1.0")) // old zip, new tag
+        #expect(!Update.isAcceptable(app: bundle, releaseVersion: "0.2.0", bundleID: id, current: "0.2.0")) // not newer
+        try make("com.evil.app", "0.2.0")
+        #expect(!Update.isAcceptable(app: bundle, releaseVersion: "0.2.0", bundleID: id, current: "0.1.0"))
+        #expect(!Update.isAcceptable(app: dir, releaseVersion: "0.2.0", bundleID: id, current: "0.1.0"))    // no Info.plist
+    }
+}
