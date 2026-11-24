@@ -7,6 +7,8 @@ struct SettingsView: View {
     @AppStorage("useSite") private var useSite = true
     @AppStorage("useTitle") private var useTitle = true
     @AppStorage("useOCR") private var useOCR = false
+    @AppStorage("sortMode") private var sortMode = SortMode.off.rawValue
+    @AppStorage("sortRoot") private var sortRoot = ""
 
     private var preview: String {
         FileNamer.makeName(date: Date(), app: "Safari", site: "github.com", text: "Pull requests", ext: "png", template: template)
@@ -37,9 +39,31 @@ struct SettingsView: View {
                 }
                 Toggle("Fallback: biggest text in the image when there is no title", isOn: $useOCR)
             }
+            Section("Folders") {
+                Picker("Sort screenshots", selection: $sortMode) {
+                    ForEach(SortMode.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+                if sortMode != SortMode.off.rawValue || !sortRoot.isEmpty {
+                    HStack {
+                        Text("Into: \(sortRoot.isEmpty ? model.folder.path : sortRoot)")
+                            .lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Choose…") { chooseFolder() }
+                        if !sortRoot.isEmpty { Button("Reset") { sortRoot = "" } }
+                    }
+                }
+                Text("Undo moves a file back and removes folders it created.").font(.caption).foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .frame(width: 520)
         .padding(.vertical, 8)
+    }
+
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.canCreateDirectories = true
+        panel.prompt = "Choose"
+        if panel.runModal() == .OK, let url = panel.url { sortRoot = url.path }
     }
 }

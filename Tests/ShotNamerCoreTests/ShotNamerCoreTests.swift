@@ -217,3 +217,52 @@ let utc = TimeZone(identifier: "UTC")!
         #expect(FileManager.default.fileExists(atPath: url.appendingPathExtension("bak").path))
     }
 }
+
+@Suite struct SortTests {
+    @Test func buildsFolderPaths() {
+        let d = FileNamer.captureDate(fromFilename: "Screenshot 2026-11-24 at 2.32.10 PM.png", timeZone: utc)!
+        #expect(SortMode.off.subpath(date: d, app: "Safari", site: "github.com", timeZone: utc) == "")
+        #expect(SortMode.month.subpath(date: d, app: nil, site: nil, timeZone: utc) == "2026-11")
+        #expect(SortMode.source.subpath(date: d, app: "Safari", site: "github.com", timeZone: utc) == "github.com")
+        #expect(SortMode.source.subpath(date: d, app: "Safari", site: nil, timeZone: utc) == "Safari")
+        #expect(SortMode.source.subpath(date: d, app: nil, site: nil, timeZone: utc) == "Other")
+        #expect(SortMode.monthSource.subpath(date: d, app: "A/B", site: nil, timeZone: utc) == "2026-11/A B")
+    }
+
+    func scratch() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    @Test func sortsThenUndoRemovesOnlyEmptyCreatedFolders() throws {
+        let dir = try scratch(); defer { try? FileManager.default.removeItem(at: dir) }
+        let log = UndoLog(url: dir.appendingPathComponent("log.json"))
+        let fm = FileManager.default
+        func shot(_ n: String) throws -> URL { let u = dir.appendingPathComponent(n); try Data([1]).write(to: u); return u }
+        let date = Date(timeIntervalSince1970: 0)
+        let a = try Renamer.rename(try shot("Screenshot A.png"), date: date, app: "Safari", useOCR: false,
+                                   sort: .monthSource, sortRoot: dir.appendingPathComponent("Sorted"), log: log)
+        #expect(a.deletingLastPathComponent().path.hasSuffix("Sorted/1970-01/Safari"))
+        let b = try Renamer.rename(try shot("Screenshot B.png"), date: date, app: "Safari", useOCR: false,
+                                   sort: .monthSource, sortRoot: dir.appendingPathComponent("Sorted"), log: log)
+        #expect(fm.fileExists(atPath: b.path))
+
+        try Renamer.undoLast(log: log)            // B: folders already existed → must stay (A is inside)
+        #expect(fm.fileExists(atPath: dir.appendingPathComponent("Sorted/1970-01/Safari").path))
+        try Renamer.undoLast(log: log)            // A: created Sorted/, 1970-01/, Safari/ → all gone
+        #expect(!fm.fileExists(atPath: dir.appendingPathComponent("Sorted").path))
+        #expect(fm.fileExists(atPath: dir.appendingPathComponent("Screenshot A.png").path))
+    }
+
+    @Test func undoKeepsFoldersThatHoldOtherFiles() throws {
+        let dir = try scratch(); defer { try? FileManager.default.removeItem(at: dir) }
+        let log = UndoLog(url: dir.appendingPathComponent("log.json"))
+        let u = dir.appendingPathComponent("Screenshot.png"); try Data([1]).write(to: u)
+        let root = dir.appendingPathComponent("Sorted")
+        _ = try Renamer.rename(u, date: Date(timeIntervalSince1970: 0), app: "Safari", useOCR: false, sort: .source, sortRoot: root, log: log)
+        try Data([2]).write(to: root.appendingPathComponent("Safari/user-file.txt"))
+        try Renamer.undoLast(log: log)
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("Safari/user-file.txt").path))
+    }
+}

@@ -6,7 +6,11 @@ public final class UndoLog {
         public let from: String
         public let to: String
         public let date: Date
-        public init(from: String, to: String, date: Date) { self.from = from; self.to = to; self.date = date }
+        /// Folders the rename created (outermost first); removed on undo if they are empty again. Optional: absent in 0.1 logs.
+        public let createdDirs: [String]?
+        public init(from: String, to: String, date: Date, createdDirs: [String]? = nil) {
+            self.from = from; self.to = to; self.date = date; self.createdDirs = createdDirs
+        }
     }
 
     private let url: URL

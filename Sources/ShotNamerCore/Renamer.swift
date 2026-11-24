@@ -19,7 +19,8 @@ public enum Renamer {
     /// Renames `url` in place and logs it for undo. Returns the new URL.
     @discardableResult
     public static func rename(_ url: URL, date: Date, app: String?, title: String? = nil,
-                              useSite: Bool = false, useOCR: Bool, template: String = Template.defaultName, log: UndoLog,
+                              useSite: Bool = false, useOCR: Bool, template: String = Template.defaultName,
+                              sort: SortMode = .off, sortRoot: URL? = nil, log: UndoLog,
                               recognize: (URL) -> [TextLine] = TextRecognizer.lines) throws -> URL {
         let title = title.flatMap { $0.isEmpty ? nil : $0 }
         let wantSite = useSite && SiteDetector.isBrowser(app)
@@ -32,9 +33,17 @@ public enum Renamer {
         if title == nil && useOCR { text = TextRecognizer.headline(from: lines) }
         let name = FileNamer.makeName(date: date, app: app, site: site, text: text,
                                      ext: url.pathExtension.lowercased(), template: template)
-        let dest = FileNamer.uniqueURL(in: url.deletingLastPathComponent(), name: name)
-        try FileManager.default.moveItem(at: url, to: dest)
-        try log.append(.init(from: url.path, to: dest.path, date: Date()))
+        let fm = FileManager.default
+        var folder = sortRoot ?? url.deletingLastPathComponent()
+        let sub = sort.subpath(date: date, app: app, site: site)
+        if !sub.isEmpty { folder.appendPathComponent(sub, isDirectory: true) }
+        var created: [String] = [] // folders that do not exist yet, outermost first
+        var probe = folder
+        while !fm.fileExists(atPath: probe.path) { created.insert(probe.path, at: 0); probe.deleteLastPathComponent() }
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        let dest = FileNamer.uniqueURL(in: folder, name: name)
+        try fm.moveItem(at: url, to: dest)
+        try log.append(.init(from: url.path, to: dest.path, date: Date(), createdDirs: created.isEmpty ? nil : created))
         return dest
     }
 
@@ -47,6 +56,9 @@ public enum Renamer {
         guard fm.fileExists(atPath: r.to) else { throw CocoaError(.fileNoSuchFile) }
         guard !fm.fileExists(atPath: r.from) else { throw CocoaError(.fileWriteFileExists) }
         try fm.moveItem(atPath: r.to, toPath: r.from)
+        for dir in (r.createdDirs ?? []).reversed() { // innermost first; only if now empty (rmdir refuses otherwise)
+            rmdir(dir)
+        }
         return URL(fileURLWithPath: r.from)
     }
 }

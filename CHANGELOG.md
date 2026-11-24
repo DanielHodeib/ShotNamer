@@ -3,6 +3,7 @@
 ## 0.1.0 – unreleased
 
 - Settings window with a custom file name template (`{date} {time} {app} {site} {title}`).
+- Optional sorting into month / website-or-app folders, with undo that cleans up empty folders.
 - Undo log: a log that cannot be read is backed up to `renames.json.bak` instead of being overwritten.
 - Menu bar app that renames new screenshots to `date - app - headline text`.
 - Website name from the address bar in browser screenshots (on-device OCR, no permission).

@@ -76,11 +76,15 @@ final class AppModel: ObservableObject {
         let useOCR = UserDefaults.standard.bool(forKey: "useOCR")
         let useSite = UserDefaults.standard.bool(forKey: "useSite")
         let template = UserDefaults.standard.string(forKey: "nameTemplate") ?? Template.defaultName
+        let sort = SortMode(rawValue: UserDefaults.standard.string(forKey: "sortMode") ?? "") ?? .off
+        let sortPath = UserDefaults.standard.string(forKey: "sortRoot") ?? ""
+        let sortRoot = sortPath.isEmpty ? nil : URL(fileURLWithPath: sortPath, isDirectory: true)
         let log = self.log
         do {
             // OCR is slow; keep it off the main thread.
             let new = try await Task.detached {
-                try Renamer.rename(url, date: date, app: app, title: title, useSite: useSite, useOCR: useOCR, template: template, log: log)
+                try Renamer.rename(url, date: date, app: app, title: title, useSite: useSite, useOCR: useOCR, template: template,
+                                      sort: sort, sortRoot: sortRoot, log: log)
             }.value
             written.insert(new.path)
             recent = Array(([new] + recent).prefix(5))
