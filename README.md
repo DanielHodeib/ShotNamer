@@ -22,7 +22,15 @@ Requires macOS 14 (Sonoma) or newer.
 
 ## Install
 
-There is no notarized download yet, so build it yourself (needs Xcode or the Swift toolchain):
+**Download (easiest):**
+
+1. Get `ShotNamer.zip` from the [latest release](https://github.com/DanielHodeib/ShotNamer/releases/latest) and unzip it.
+2. Drag `ShotNamer.app` into `/Applications`.
+3. First start: **right-click the app › Open › Open**. (If macOS still refuses: *System Settings › Privacy & Security › Open Anyway*.) The app is not notarized yet, so macOS asks once. After that it starts normally.
+
+From then on ShotNamer **updates itself** (see *Updates* below); you never have to download again.
+
+**Or build it yourself** (needs Xcode or the Swift toolchain):
 
 ```sh
 git clone https://github.com/DanielHodeib/ShotNamer.git
@@ -30,9 +38,9 @@ cd ShotNamer
 scripts/install.sh            # builds and installs to /Applications, then starts it
 ```
 
-Installed copies **update themselves** from signed GitHub releases (see *Updates* below); with a self-built copy you can also run `scripts/install.sh` again after pulling. (`scripts/build-app.sh` only builds `build/ShotNamer.app`.) "Launch at login" needs the app in `/Applications`.
+"Launch at login" needs the app in `/Applications`.
 
-> **Unsigned builds:** the app is ad-hoc signed, not notarized. If you download a prebuilt copy instead of building, macOS Gatekeeper will block it on first launch. Allow it in *System Settings › Privacy & Security* (the "Open Anyway" button shown after the blocked attempt). Building from source avoids this.
+> **Why the extra click?** The app is ad-hoc signed, not notarized (that needs a paid Apple Developer account). Building from source avoids the prompt. Updates that the app installs itself do not trigger it.
 
 ## Use
 
