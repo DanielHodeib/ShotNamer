@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import ServiceManagement
 import ShotNamerCore
 
@@ -96,14 +97,22 @@ final class AppModel: ObservableObject {
     }
 
     /// macOS may still be writing the file when it appears; wait until its size stops changing.
+    /// A recording must also be a finished, playable movie (its index is written last) and stay unchanged longer.
     private func waitUntilStable(_ url: URL) async -> Bool {
-        var last = -1
-        for _ in 0..<20 {
+        let video = FileNamer.isVideo(url)
+        let needed = video ? 3 : 1
+        var last = -1, same = 0
+        for _ in 0..<(video ? 600 : 20) { // videos: up to 10 min of recording
             let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
             let size = (attrs?[.size] as? NSNumber)?.intValue ?? -1 // .size is UInt64, `as? Int` would fail
-            if size > 0 && size == last { return true }
+            same = (size > 0 && size == last) ? same + 1 : 0
             last = size
-            try? await Task.sleep(for: .milliseconds(500))
+            if same >= needed {
+                if !video { return true }
+                if let d = try? await AVURLAsset(url: url).load(.duration), d.seconds > 0 { return true }
+                same = 0
+            }
+            try? await Task.sleep(for: .milliseconds(video ? 1000 : 500))
         }
         return false
     }

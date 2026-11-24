@@ -7,16 +7,28 @@ public enum FileNamer {
         "Screenshot", "Screen Shot", "Bildschirmfoto", "Capture d’écran", "Capture d'écran",
         "Captura de pantalla", "Schermafbeelding", "Istantanea schermo",
     ]
-    // Screen recordings (.mov) are deliberately not handled.
-    static let extensions: Set<String> = ["png", "jpg", "jpeg", "heic", "tiff"]
+    static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "heic", "tiff"]
+    static let videoExtensions: Set<String> = ["mov", "mp4"]
+    static let recordingPrefixes = [
+        "Screen Recording", "Bildschirmaufnahme", "Enregistrement de l’écran", "Enregistrement de l'écran",
+        "Grabación de pantalla", "Schermopname", "Registrazione schermo",
+    ]
 
-    /// Screenshot or screen recording.
-    public static func isCapture(filename: String) -> Bool { isScreenshot(filename: filename) }
+    public static func isVideo(_ url: URL) -> Bool { videoExtensions.contains(url.pathExtension.lowercased()) }
 
+    /// Screenshot (image) named like a fresh macOS screenshot.
     public static func isScreenshot(filename: String) -> Bool {
         guard !filename.hasPrefix(".") else { return false }
         let ext = (filename as NSString).pathExtension.lowercased()
-        return extensions.contains(ext) && prefixes.contains { filename.hasPrefix($0) }
+        return imageExtensions.contains(ext) && prefixes.contains { filename.hasPrefix($0) }
+    }
+
+    /// Screenshot or screen recording named like a fresh macOS capture.
+    public static func isCapture(filename: String) -> Bool {
+        guard !filename.hasPrefix(".") else { return false }
+        let ext = (filename as NSString).pathExtension.lowercased()
+        return isScreenshot(filename: filename)
+            || (videoExtensions.contains(ext) && recordingPrefixes.contains { filename.hasPrefix($0) })
     }
 
     /// Capture time from the filename ("Screenshot 2026-11-24 at 2.32.10 PM.png",

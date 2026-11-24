@@ -68,7 +68,7 @@ Websites, window titles and OCR text become part of the **filename**; titles can
 ## Behaviour and limits
 
 - Only screenshots **taken while the app runs** are renamed. Existing files are never touched.
-- Recognised: PNG, JPG, HEIC and TIFF named like `Screenshot …`, `Screen Shot …` or the localized equivalents (German, French, Spanish, Dutch, Italian). Screen recordings (`.mov`) are ignored. A custom screenshot name prefix (`defaults write com.apple.screencapture name`) is not recognised yet.
+- Recognised: PNG, JPG, HEIC and TIFF named like `Screenshot …`, `Screen Shot …` or the localized equivalents (German, French, Spanish, Dutch, Italian). **Screen recordings** (`Screen Recording …mov` / `Bildschirmaufnahme …mov`, also `.mp4`) are renamed too: ShotNamer waits until the movie is finished and playable, then names it from the app and window title at the start of the recording, and reads the website from a frame one second in. Recordings get no searchable text and are **not redacted**. A custom screenshot name prefix (`defaults write com.apple.screencapture name`) is not recognised yet.
 - macOS does not store which app a screenshot came from. ShotNamer records which app was active over time and looks up the app active at the capture time (parsed from the filename). It is right in nearly all cases, but can be wrong if you switch apps within the same second.
 - The window title is sampled once a second, so it matches the moment of capture even if you switch tab right after. Some apps expose no title; then the name is `date - app`.
 - The website is only detected when the address bar (or the domain) is visible in the screenshot and the app is a browser (Safari, Chrome, Brave, Firefox, Arc, Edge, Opera, Vivaldi, Orion, DuckDuckGo, Zen). A cropped screenshot without the address bar gets no site. Other apps are not scanned.
@@ -89,7 +89,6 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it is put together and 
 
 - Recognise sites from logos / page text when the address bar is not visible
 - Custom name template
-- Screen recordings
 - App icon, Developer ID signing and notarization, downloadable releases
 
 ## License

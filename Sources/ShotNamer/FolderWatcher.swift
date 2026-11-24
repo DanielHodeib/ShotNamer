@@ -30,7 +30,7 @@ final class FolderWatcher {
     private func scan() {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return }
         let current = Set(names)
-        for name in current.subtracting(seen) where FileNamer.isScreenshot(filename: name) {
+        for name in current.subtracting(seen) where FileNamer.isCapture(filename: name) {
             onNew(folder.appendingPathComponent(name))
         }
         seen = current

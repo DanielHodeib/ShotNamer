@@ -43,7 +43,7 @@ public enum Renamer {
         try fm.createDirectory(at: folder, withIntermediateDirectories: true)
         let dest = FileNamer.uniqueURL(in: folder, name: name)
         try fm.moveItem(at: url, to: dest)
-        if searchable { try? SearchIndex.write(SearchIndex.comment(from: lines), to: dest) } // best effort: never fail the rename
+        if searchable && !FileNamer.isVideo(dest) { try? SearchIndex.write(SearchIndex.comment(from: lines), to: dest) } // best effort: never fail the rename
         try log.append(.init(from: url.path, to: dest.path, date: Date(), createdDirs: created.isEmpty ? nil : created))
         return dest
     }

@@ -3,6 +3,7 @@
 ## 0.1.0 – unreleased
 
 - Settings window with a custom file name template (`{date} {time} {app} {site} {title}`).
+- Screen recordings (.mov/.mp4) are renamed like screenshots.
 - Searchable text: OCR text stored in the Finder comment so Spotlight finds screenshots by their content.
 - Optional sorting into month / website-or-app folders, with undo that cleans up empty folders.
 - Undo log: a log that cannot be read is backed up to `renames.json.bak` instead of being overwritten.

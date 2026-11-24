@@ -9,7 +9,11 @@ let utc = TimeZone(identifier: "UTC")!
         #expect(FileNamer.isScreenshot(filename: "Screenshot 2026-11-24 at 2.32.10 PM.png"))
         #expect(FileNamer.isScreenshot(filename: "Bildschirmfoto 2026-11-24 um 14.32.10.png"))
         #expect(!FileNamer.isScreenshot(filename: ".Screenshot 2026-11-24 at 2.32.10 PM.png"))
-        #expect(!FileNamer.isScreenshot(filename: "Screenshot 2026-11-24.mov"))
+        #expect(!FileNamer.isScreenshot(filename: "Screenshot 2026-11-24.mov")) // a video is not a screenshot
+        #expect(FileNamer.isCapture(filename: "Screen Recording 2026-11-24 at 14.32.10.mov"))
+        #expect(FileNamer.isCapture(filename: "Bildschirmaufnahme 2026-11-24 um 14.32.10.mov"))
+        #expect(!FileNamer.isCapture(filename: "2026-11-24 14.32.10 - Safari.mov")) // renamed recordings are not re-processed
+        #expect(!FileNamer.isCapture(filename: "Screen Recording notes.txt"))
         #expect(!FileNamer.isScreenshot(filename: "holiday.png"))
     }
 
