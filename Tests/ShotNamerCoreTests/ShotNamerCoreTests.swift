@@ -86,6 +86,17 @@ let utc = TimeZone(identifier: "UTC")!
         #expect(try Renamer.undoLast(log: log) == nil)
     }
 
+    @Test func titleBeatsOCR() throws {
+        let dir = try scratch()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let log = UndoLog(url: dir.appendingPathComponent("log.json"))
+        let u = dir.appendingPathComponent("Screenshot.png"); try Data([1]).write(to: u)
+        let new = try Renamer.rename(u, date: Date(timeIntervalSince1970: 0), app: "Brave Browser",
+                                     title: "Meine Anzeigen | willhaben", useOCR: true, log: log,
+                                     ocr: { _ in Issue.record("OCR must not run when a title exists"); return nil })
+        #expect(new.lastPathComponent.hasSuffix("Brave Browser - Meine Anzeigen | willhaben.png"))
+    }
+
     @Test func ocrOffSkipsText() throws {
         let dir = try scratch()
         defer { try? FileManager.default.removeItem(at: dir) }

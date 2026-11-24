@@ -18,9 +18,10 @@ public enum Renamer {
 
     /// Renames `url` in place and logs it for undo. Returns the new URL.
     @discardableResult
-    public static func rename(_ url: URL, date: Date, app: String?, useOCR: Bool, log: UndoLog,
+    public static func rename(_ url: URL, date: Date, app: String?, title: String? = nil, useOCR: Bool, log: UndoLog,
                               ocr: (URL) -> String? = TextRecognizer.headline) throws -> URL {
-        let text = useOCR ? ocr(url) : nil
+        // Window title is far more meaningful than OCR; OCR only fills in when there is no title.
+        let text = title.flatMap { $0.isEmpty ? nil : $0 } ?? (useOCR ? ocr(url) : nil)
         let name = FileNamer.makeName(date: date, app: app, text: text, ext: url.pathExtension.lowercased())
         let dest = FileNamer.uniqueURL(in: url.deletingLastPathComponent(), name: name)
         try FileManager.default.moveItem(at: url, to: dest)

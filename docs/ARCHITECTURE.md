@@ -7,16 +7,18 @@ Sources/
   ShotNamerCore/        pure logic, no UI, unit-tested
     FileNamer.swift     is-it-a-screenshot, parse capture time, sanitize, build name, pick unique path
     AppHistory.swift    "which app was frontmost at time T"
-    TextRecognizer.swift  Vision OCR → most prominent line
+    TextRecognizer.swift  Vision OCR → most prominent line (fallback only)
     UndoLog.swift       JSON list of renames in ~/Library/Application Support/ShotNamer/
     Renamer.swift       screenshot folder lookup, rename + log, undo
   ShotNamer/            the menu bar app (SwiftUI MenuBarExtra)
     ShotNamerApp.swift  menu UI
     AppModel.swift      wires watcher, app-activation tracking, rename, undo
+    WindowTitle.swift   focused-window title via Accessibility API
     FolderWatcher.swift DispatchSource on the folder; reports new screenshot files
 Tests/ShotNamerCoreTests/
 Resources/Info.plist    LSUIElement (no Dock icon), folder-access usage strings
 scripts/build-app.sh    swift build → .app → ad-hoc codesign
+scripts/install.sh      build-app + copy to /Applications + restart
 ```
 
 ## Flow
@@ -24,14 +26,14 @@ scripts/build-app.sh    swift build → .app → ad-hoc codesign
 1. **Start.** `AppModel` resolves the screenshot folder (`com.apple.screencapture location`, else `~/Desktop`; `SHOTNAMER_FOLDER` overrides for tests), snapshots the existing file names so they are never touched, and starts listening to `NSWorkspace.didActivateApplicationNotification`. The current frontmost app seeds `AppHistory`.
 2. **Detect.** `FolderWatcher` gets a directory `.write` event, lists the folder and diffs against the names it has seen. New names that pass `FileNamer.isScreenshot` are reported.
 3. **Settle.** macOS may still be writing the file, so `AppModel.waitUntilStable` waits until its size stops changing (500 ms polls, 10 s cap).
-4. **Identify.** Capture time comes from the digits in the filename (works in any locale, 12 h or 24 h). The file's own creation date is only a fallback, because the floating screenshot thumbnail can delay writing the file by seconds. `AppHistory.app(at:)` returns the app active at that time. `com.apple.screencaptureui` and ShotNamer itself are never recorded.
-5. **Rename.** OCR (off the main thread, optional) → `FileNamer.makeName` → `uniqueURL` → move → append to `UndoLog`.
+4. **Identify.** Capture time comes from the digits in the filename (works in any locale, 12 h or 24 h). The file's own creation date is only a fallback, because the floating screenshot thumbnail can delay writing the file by seconds. `AppHistory.app(at:)` returns the app active at that time. A 1 s timer records the focused window title into a second `AppHistory`, so the title at capture time is looked up the same way. `com.apple.screencaptureui` and ShotNamer itself are never recorded.
+5. **Rename.** Title if known, else OCR (off the main thread, optional) → `FileNamer.makeName` → `uniqueURL` → move → append to `UndoLog`.
 6. **Undo.** `Renamer.undoLast` pops the newest log entry and moves the file back, refusing to overwrite an existing file.
 
 ## Decisions
 
 - **No rename loops.** Renamed files start with a date, never a screenshot prefix; a test enforces this.
-- **Frontmost-app history instead of window titles.** Window titles need Screen Recording permission; app names need none.
+- **Accessibility for titles, not Screen Recording.** Reading a window title via AX needs only the Accessibility permission and avoids the recording-indicator prompt. OCR was the first attempt for the text part but picked ads and placeholders, so it is only a fallback.
 - **On-device OCR only.** Apple Vision; no network code anywhere.
 - **Swift 5 language mode** inside a `swift-tools-version:6.0` package, to avoid strict-concurrency churn for a small app. Revisit when moving to Swift 6 mode.
 - **Ad-hoc signing.** No Developer ID yet, so no notarization; see README for the Gatekeeper consequence.
